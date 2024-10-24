@@ -8,9 +8,9 @@
     stop_bits: "1"                            # serial stop bits
 
                                               # uint8 section
-    gyroODR: 7                                # gyro measurement speed
+    gyroODR: 6                                # gyro measurement speed
     gyroFSR: 0                                # gyro sensitivity
-    accelODR: 7                               # acceletometer measurement speed
+    accelODR: 6                               # acceletometer measurement speed
     accelFSR: 0                               # acceletometer sensitivity
 
     notchFilterBW: 2                          # sensor level gyro notch filter bandwidth select

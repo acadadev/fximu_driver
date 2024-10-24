@@ -15,8 +15,9 @@
 #define PARAM_TYPE_BOOL 4                         // boolean parameter
 
 #define PACKET_PREFIX '$'                         // imu packet identifier
-#define DIAG_PREFIX '>'                           // diag packet identifier
-#define CALIBRATION_PREFIX '<'                    // calibration packet identifier
+#define DIAG_PREFIX 'D'                           // diag packet identifier
+#define CALIBRATION_PREFIX 'C'                    // calibration packet identifier
+#define CALIBRATION_RAW_PREFIX 'R'                // calibration packet identifier
 #define PACKET_POSTFIX '\n'                       // last byte of any packet
 
 #define SYSCTL_RESET 0x01

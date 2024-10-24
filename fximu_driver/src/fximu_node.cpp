@@ -484,10 +484,13 @@ namespace drivers
           float wy_bias = R4(buffer, 1 + 16);                    // wy_bias
           float wz_bias = R4(buffer, 1 + 20);                    // wz_bias
 
-          RCLCPP_INFO(get_logger(), "BIAS: %.6f,%.6f,%.6f",
+          float mag_temp = R4(buffer, 25);                       // wz_bias
+
+          RCLCPP_INFO(get_logger(), "BIAS: %.6f,%.6f,%.6f,%.2f",
             wx_bias,
             wy_bias,
-            wz_bias
+            wz_bias,
+            mag_temp
             );
 
         }
@@ -508,7 +511,7 @@ namespace drivers
 
         } else { 
 
-          /* TODO: these were rawn calibration values
+          /* TODO: these were raw calibration values
           int16_t raw_ax = I2(buffer, 1);                         // raw ax
           int16_t raw_ay = I2(buffer, 1 + 2);                     // raw ay
           int16_t raw_az = I2(buffer, 1 + 4);                     // raw az
@@ -528,7 +531,7 @@ namespace drivers
           float mx = R4(buffer, 25);                    // raw magnetic x
           float my = R4(buffer, 25 + 4);                // raw magnetic y
           float mz = R4(buffer, 25 + 8);                // raw magnetic z
-          float mtemp = R4(buffer, 25 + 12);            // raw temp
+          float mtemp = R4(buffer, 25 + 12);            // raw temp (NOT USED)
           
           RCLCPP_INFO(get_logger(), "GYRO: %f,%f,%f",
             radsGyroX,
@@ -550,10 +553,6 @@ namespace drivers
           );       
 
           */                
-     
-          RCLCPP_INFO(get_logger(), "TEMP: %f",
-            mtemp
-          ); 
 
         }
 
