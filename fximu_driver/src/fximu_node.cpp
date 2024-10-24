@@ -484,7 +484,7 @@ namespace drivers
           float wy_bias = R4(buffer, 1 + 16);                    // wy_bias
           float wz_bias = R4(buffer, 1 + 20);                    // wz_bias
 
-          RCLCPP_INFO(get_logger(), "BIAS %.6f,%.6f,%.6f",
+          RCLCPP_INFO(get_logger(), "BIAS: %.6f,%.6f,%.6f",
             wx_bias,
             wy_bias,
             wz_bias
@@ -536,6 +536,7 @@ namespace drivers
             radsGyroZ
           );
 
+          /*
           RCLCPP_INFO(get_logger(), "ACCEL: %f,%f,%f",
             newtonsAccelX,
             newtonsAccelY,
@@ -546,11 +547,13 @@ namespace drivers
             mx,
             my,
             mz
-          );                       
-          
+          );       
+
+          */                
+     
           RCLCPP_INFO(get_logger(), "TEMP: %f",
             mtemp
-          );  
+          ); 
 
         }
 
