@@ -486,11 +486,14 @@ namespace drivers
 
           float mag_temp = R4(buffer, 25);                       // wz_bias
 
-          RCLCPP_INFO(get_logger(), "BIAS: %.6f,%.6f,%.6f,%.2f",
+          uint8_t sys_status = buffer[29];
+
+          RCLCPP_INFO(get_logger(), "BIAS %.6f,%.6f,%.6f,%.2f,%u",
             wx_bias,
             wy_bias,
             wz_bias,
-            mag_temp
+            mag_temp,
+            sys_status
             );
 
         }
@@ -507,7 +510,7 @@ namespace drivers
 
         if(crc8 != c_crc8) {
 
-          RCLCPP_ERROR(this->get_logger(), "diag crc8:%d != c_crc8:%d", crc8, c_crc8);
+          RCLCPP_ERROR(this->get_logger(), "calib crc8:%d != c_crc8:%d", crc8, c_crc8);
 
         } else { 
 
@@ -528,31 +531,33 @@ namespace drivers
           float radsGyroY = R4(buffer, 13 + 4);         // instant gyro y, in radians
           float radsGyroZ = R4(buffer, 13 + 8);         // instant gyro z, in radians
 
-          float mx = R4(buffer, 25);                    // raw magnetic x
-          float my = R4(buffer, 25 + 4);                // raw magnetic y
-          float mz = R4(buffer, 25 + 8);                // raw magnetic z
-          float mtemp = R4(buffer, 25 + 12);            // raw temp (NOT USED)
+          float mx = R4(buffer, 25);                    // magnetic x
+          float my = R4(buffer, 25 + 4);                // magnetic y
+          float mz = R4(buffer, 25 + 8);                // magnetic z
           
-          RCLCPP_INFO(get_logger(), "GYRO: %f,%f,%f",
+   
+          RCLCPP_INFO(get_logger(), "GYRO %f,%f,%f",
             radsGyroX,
             radsGyroY,
             radsGyroZ
           );
+          
 
           /*
-          RCLCPP_INFO(get_logger(), "ACCEL: %f,%f,%f",
+          RCLCPP_INFO(get_logger(), "ACCEL %f,%f,%f",
             newtonsAccelX,
             newtonsAccelY,
             newtonsAccelZ
           );  
 
-          RCLCPP_INFO(get_logger(), "MAG: %f,%f,%f",
+          RCLCPP_INFO(get_logger(), "MAG %f,%f,%f",
             mx,
             my,
             mz
-          );       
+          );
+          */       
 
-          */                
+           
 
         }
 
