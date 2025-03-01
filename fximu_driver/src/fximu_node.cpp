@@ -2,11 +2,16 @@
 #include "fximu_driver/parameters.h"
 #include "fximu_driver/fximu_node.hpp"
 
+// TODO: 
+#include <stdlib.h>
+
+#define DECPOINTS 5
+// TODO: magac above
+
 namespace lc = rclcpp_lifecycle;
 using LNI = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface;
 using lifecycle_msgs::msg::State;
 
-#include <stdlib.h>
 
 // TODO: right now sync packet is being sent each N seconds with a timer thread.
 // TODO: instead, after reception of imu packet, we can piggyback a sync packet, 
@@ -122,9 +127,7 @@ namespace drivers
 
       // create publisher
       imu_publisher = this->create_publisher<sensor_msgs::msg::Imu>("/imu/data", rclcpp::QoS{100});
-      
       mag_publisher = this->create_publisher<sensor_msgs::msg::MagneticField>("/imu/mag", rclcpp::QoS{100});
-
 
       // create subscriber
       // auto qos = rclcpp::QoS(rclcpp::KeepLast(32)).best_effort();
@@ -155,7 +158,7 @@ namespace drivers
     LNI::CallbackReturn FximuNode::on_activate(const lc::State & state) {
       (void)state;
       imu_publisher->on_activate();
-      mag_publisher->on_activate(); // TODO:
+      mag_publisher->on_activate();
       timer_sync->reset();
       RCLCPP_INFO(get_logger(), "FXIMU activated.");
       return LNI::CallbackReturn::SUCCESS;
@@ -164,7 +167,7 @@ namespace drivers
     LNI::CallbackReturn FximuNode::on_deactivate(const lc::State & state) {
       (void)state;
       imu_publisher->on_deactivate();
-      mag_publisher->on_deactivate(); // TODO:
+      mag_publisher->on_deactivate();
       timer_sync->cancel();
       RCLCPP_INFO(get_logger(), "FXIMU deactivated.");
       return LNI::CallbackReturn::SUCCESS;
@@ -174,7 +177,7 @@ namespace drivers
       (void)state;
       m_serial_driver->port()->close();
       imu_publisher.reset();
-      mag_publisher.reset(); // TODO:
+      mag_publisher.reset();
       timer_sync->cancel();
       // m_subscriber.reset();
       RCLCPP_INFO(get_logger(), "FXIMU cleaned up.");
@@ -206,8 +209,29 @@ namespace drivers
         this->declare_parameter<uint8_t>("accelUIFilterIndex", 1);
         this->declare_parameter<uint8_t>("steadyLimit", 3);
 
+        // BMM350_ODR_400HZ                            UINT8_C(0x2)
+        // BMM350_ODR_200HZ                            UINT8_C(0x3)
+        // BMM350_ODR_100HZ                            UINT8_C(0x4)
+        // BMM350_ODR_50HZ                             UINT8_C(0x5)
+        // BMM350_ODR_25HZ                             UINT8_C(0x6)
+        // BMM350_ODR_12_5HZ                           UINT8_C(0x7)
+        // BMM350_ODR_6_25HZ                           UINT8_C(0x8)
+        // BMM350_ODR_3_125HZ                          UINT8_C(0x9)
+        // BMM350_ODR_1_5625HZ                         UINT8_C(0xA)
+
+        // default is 400 HZ
+        this->declare_parameter<uint8_t>("magOdr", 0x2); 
+
+        // BMM350_AVG_NO_AVG                           UINT8_C(0x0)
+        // BMM350_AVG_2                                UINT8_C(0x1)
+        // BMM350_AVG_4                                UINT8_C(0x2)
+        // BMM350_AVG_8                                UINT8_C(0x3)    
+
+        // default is no averating
+        this->declare_parameter<uint8_t>("magAvg", 0x0); 
+
         // uint16 section
-        this->declare_parameter<uint16_t>("timer0Frq", 100);
+        this->declare_parameter<uint16_t>("timer0Sec", 4);
         this->declare_parameter<uint16_t>("timer1Sec", 5);
 
         // int16 section
@@ -222,12 +246,32 @@ namespace drivers
         this->declare_parameter<float>("kDeltaAccelerationThreshold", 10.0);
         this->declare_parameter<float>("kDeltaAngularThreshold", 4.0);
         this->declare_parameter<float>("kAngularThreshold", 1.0);
+
         this->declare_parameter<float>("notchFilterFHZ", 1.449);
-        this->declare_parameter<float>("gainACC", 0.01);
-        this->declare_parameter<float>("gainMAG", 0.001);
-        this->declare_parameter<float>("biasAlpha", 0.01);
-        this->declare_parameter<float>("gainAlpha", 0.9);
-        this->declare_parameter<float>("stableAlpha", 0.05);
+
+        this->declare_parameter<float>("filterGainAccel", 0.02);  // filter gain for acceletometer and gyro
+        this->declare_parameter<float>("filterGainMag", 0.001);   // filter gain for magnetometer data
+
+        this->declare_parameter<float>("biasAlpha", 0.01);        // for auto bias calculation filtering
+        this->declare_parameter<float>("gainAlpha", 0.95);        // adaptive gain calculation
+        this->declare_parameter<float>("stableAlpha", 0.05);      // initial steady condition
+        this->declare_parameter<float>("magAlpha", 0.02);         // averaged mag data for display
+
+        this->declare_parameter<float>("magBiasX", 0.0);
+        this->declare_parameter<float>("magBiasY", 0.0);
+        this->declare_parameter<float>("magBiasZ", 0.0);
+
+        this->declare_parameter<float>("magSoftA1", 0.0);
+        this->declare_parameter<float>("magSoftA2", 0.0);
+        this->declare_parameter<float>("magSoftA3", 0.0);
+         
+        this->declare_parameter<float>("magSoftB1", 0.0);
+        this->declare_parameter<float>("magSoftB2", 0.0);
+        this->declare_parameter<float>("magSoftB3", 0.0);
+
+        this->declare_parameter<float>("magSoftC1", 0.0);
+        this->declare_parameter<float>("magSoftC2", 0.0);
+        this->declare_parameter<float>("magSoftC3", 0.0);            
 
         // boolean section
         this->declare_parameter<bool>("enableNotchFilter", true);
@@ -244,7 +288,6 @@ namespace drivers
         this->declare_parameter<bool>("pubMagnetometerData", true);
 
         // string section, these do not go to device
-        // TODO: discrepancy with mag_link
         imu_frame_id = this->declare_parameter<std::string>("imu_frame_id", "imu_link");
         mag_frame_id = this->declare_parameter<std::string>("mag_frame_id", "mag_link");
 
@@ -332,20 +375,20 @@ namespace drivers
 
     void FximuNode::receive_callback(const std::vector<uint8_t> & buffer, const size_t & bytes_transferred) { 
 
-      // TODO make others const too
       const auto received_time = std::chrono::high_resolution_clock::now();
       const uint32_t host_seconds = std::chrono::duration_cast<std::chrono::seconds>(received_time.time_since_epoch()).count();
       const uint32_t host_nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(received_time.time_since_epoch() - std::chrono::seconds(host_seconds)).count();
 
       if(
         (bytes_transferred == 64) &
-        (buffer[0] == PACKET_PREFIX) &                              // prefix check
-        (buffer[IMU_DATA_SIZE - 1] == PACKET_POSTFIX)               // postfix check
+        (buffer[0] == PACKET_PREFIX) &                                  // prefix check
+        (buffer[IMU_DATA_SIZE - 1] == PACKET_POSTFIX)                   // postfix check
       ) {   
 
         // get crc from received packet
-        uint8_t crc8 = buffer[IMU_DATA_SIZE - 2];                 // crc @ 62
-        uint8_t c_crc8 = crc8ccitt(buffer.data(), IMU_DATA_SIZE -3);
+        uint8_t crc8 = buffer[IMU_DATA_SIZE - 2];                        // crc @ 62
+        uint8_t c_crc8 = crc8ccitt(buffer.data(), IMU_DATA_SIZE - 3);
+
 
         if(crc8 != c_crc8) {
 
@@ -373,8 +416,18 @@ namespace drivers
           mag_data.magnetic_field.y = R4(buffer, 41 + 4);
           mag_data.magnetic_field.z = R4(buffer, 41 + 8);
 
-          // TODO: magnetic covariance
-          // TODO: optional based on publish.
+          float mag_vector = sqrt(
+              (mag_data.magnetic_field.x * mag_data.magnetic_field.x) +
+              (mag_data.magnetic_field.y * mag_data.magnetic_field.y) +
+              (mag_data.magnetic_field.z * mag_data.magnetic_field.z)
+          );
+
+          /*
+          RCLCPP_INFO(get_logger(), "%.6f uT",
+            mag_vector
+          );
+          */
+
 
           // TIMING values coming from DEVICE
 
@@ -429,14 +482,11 @@ namespace drivers
 
           avg_rtc = (avg_rtc * 0.9) + (current_rtc_delta * 0.1);
           avg_nanos = (avg_nanos * 0.99) + ((current_delta_debug / 1000000000.0) * 0.01);
-          /*
-          RCLCPP_INFO(get_logger(), "delta_mcu: %f delta_rtc: %.6f",
-            avg_nanos,
-            avg_rtc
-            );*/
 
-          sys_status = buffer[61]; // sys_status @ 61
-          handle_sys_status();     // make a sysctl call if sys_status has changed
+          // notice: we print SYS_REPORT here
+          if(buffer[61]!=0) {
+            RCLCPP_ERROR(this->get_logger(), "SYS_REPORT: %d", buffer[61]);
+          }
 
           // dont publish if timestamp difference is greater than 2 seconds
           if(publish_packet) {
@@ -447,16 +497,30 @@ namespace drivers
 
               rclcpp::Time stamp(static_cast<uint64_t>((stamp_seconds * 1e9) + device_sys_ticks_nanos));
 
+              // TODO: later broadcast tf from imu_link to mag_link
+
               //imu_data.header.stamp = rclcpp::Time(stamp_seconds) + rclcpp::Duration(0, device_sys_ticks_nanos);
               imu_data.header.stamp = stamp;
               imu_data.header.frame_id = imu_frame_id;
 
-              // TODO: make with option, publish only if pub mag is true
               mag_data.header.stamp = imu_data.header.stamp;
-              mag_data.header.frame_id = imu_frame_id;
+              mag_data.header.frame_id = mag_frame_id;
 
               imu_publisher->publish(imu_data);
-              mag_publisher->publish(mag_data); // TODO make optional
+              mag_publisher->publish(mag_data);
+
+              /*
+              // for calibration
+              RCLCPP_INFO(get_logger(), "%.6f %.6f %.6f %.6f %.6f %.6f %.6f",
+                imu_data.orientation.w,
+                imu_data.orientation.x,
+                imu_data.orientation.y,
+                imu_data.orientation.z,
+                mag_data.magnetic_field.x,
+                mag_data.magnetic_field.y,
+                mag_data.magnetic_field.z
+              );
+              */
 
           }
 
@@ -484,17 +548,57 @@ namespace drivers
           float wy_bias = R4(buffer, 1 + 16);                    // wy_bias
           float wz_bias = R4(buffer, 1 + 20);                    // wz_bias
 
-          float mag_temp = R4(buffer, 25);                       // wz_bias
+          float mag_temp = R4(buffer, 25);
+          
+          uint32_t posix_time = U4(buffer, 30);
 
-          uint8_t sys_status = buffer[29];
+          uint8_t received_second = buffer[34];
+          uint32_t received_nano = U4(buffer, 35);
 
-          RCLCPP_INFO(get_logger(), "BIAS %.6f,%.6f,%.6f,%.2f,%u",
+          uint8_t mcu_second = buffer[39];
+          uint32_t mcu_nano = U4(buffer, 40);
+
+          int32_t MCU_PULL = I4(buffer, 44);
+          int32_t MCU_OFFSET = I4(buffer, 48);
+
+          int16_t RTC_PULL = I2(buffer, 52);
+          int16_t RTC_OFFSET = I2(buffer, 54);
+          int16_t DT_PERIOD_PULL = I2(buffer, 56);
+
+          // notice: this is setting sys_status from diag packet
+          sys_status = buffer[61];
+          handle_sys_status(sys_status);
+
+          /*
+          RCLCPP_INFO(get_logger(), "wx: %.6f, wy: %.6f, wz: %.6f, temp: %.2fC",
             wx_bias,
             wy_bias,
             wz_bias,
-            mag_temp,
+            mag_temp
+          );
+
+          RCLCPP_INFO(get_logger(), "posix: %u, recs: %u, recns: %u, mcus: %u, mcuns: %u",
+            posix_time,
+            received_second,
+            received_nano, 
+            mcu_second,
+            mcu_nano
+          );       
+
+          RCLCPP_INFO(get_logger(), "mcup: %d, mcuo: %d, rtcp: %d, rtco: %d, dtpp: %d",
+            MCU_PULL,
+            MCU_OFFSET, 
+            RTC_PULL,
+            RTC_OFFSET,
+            DT_PERIOD_PULL 
+          );
+
+          RCLCPP_INFO(get_logger(), "sys_status: %d",
             sys_status
-            );
+          );
+          */
+
+
 
         }
 
@@ -514,55 +618,91 @@ namespace drivers
 
         } else { 
 
-          /* TODO: these were raw calibration values
+          float ax = R4(buffer, 1);                     // instant accel x, in newtons
+          float ay = R4(buffer, 1 + 4);                 // instant accel y, in newtons
+          float az = R4(buffer, 1 + 8);                 // instant accel z, in newtons
+
+          float wx = R4(buffer, 13);                    // instant gyro x, in degrees
+          float wy = R4(buffer, 13 + 4);                // instant gyro y, in degrees
+          float wz = R4(buffer, 13 + 8);                // instant gyro z, in degrees
+
+          float mx = R4(buffer, 25);                    // magnetic x
+          float my = R4(buffer, 25 + 4);                // magnetic y
+          float mz = R4(buffer, 25 + 8);                // magnetic z
+          
+          /*
+          RCLCPP_INFO(get_logger(), "GYRO %f,%f,%f",
+            wx,
+            wy,
+            wz
+          );
+
+          
+          RCLCPP_INFO(get_logger(), "ACCEL %f,%f,%f",
+            ax,
+            ay,
+            az
+          );  
+          */
+          /*
+          RCLCPP_INFO(get_logger(), "MAGF %f,%f,%f",
+            mx,
+            my,
+            mz
+          );         */   
+
+        }
+
+      } else if(
+        (bytes_transferred == 64) &
+        (buffer[0] == CALIBRATION_RAW_PREFIX) &                         // prefix check
+        (buffer[IMU_DATA_SIZE - 1] == PACKET_POSTFIX)               // postfix check
+      ) { 
+
+        // get crc from received packet
+        uint8_t crc8 = buffer[IMU_DATA_SIZE - 2];                 // crc @ 62
+        uint8_t c_crc8 = crc8ccitt(buffer.data(), IMU_DATA_SIZE - 3);
+
+        if(crc8 != c_crc8) {
+
+          RCLCPP_ERROR(this->get_logger(), "raw crc8:%d != c_crc8:%d", crc8, c_crc8);
+
+        } else { 
+
           int16_t raw_ax = I2(buffer, 1);                         // raw ax
           int16_t raw_ay = I2(buffer, 1 + 2);                     // raw ay
           int16_t raw_az = I2(buffer, 1 + 4);                     // raw az
           int16_t raw_wx = I2(buffer, 1 + 6);                     // raw wx
           int16_t raw_wy = I2(buffer, 1 + 8);                     // raw wy
           int16_t raw_wz = I2(buffer, 1 + 10);                    // raw wz
-          */
 
-          float newtonsAccelX = R4(buffer, 1);          // instant accel x, in newtons
-          float newtonsAccelY = R4(buffer, 1 + 4);      // instant accel y, in newtons
-          float newtonsAccelZ = R4(buffer, 1 + 8);      // instant accel z, in newtons
+          int32_t raw_mx = I4(buffer, 13); 
+          int32_t raw_my = I4(buffer, 13 + 4);
+          int32_t raw_mz = I4(buffer, 13 + 8);
+          int32_t raw_mt = I4(buffer, 13 + 12);
 
-          float radsGyroX = R4(buffer, 13);             // instant gyro x, in radians
-          float radsGyroY = R4(buffer, 13 + 4);         // instant gyro y, in radians
-          float radsGyroZ = R4(buffer, 13 + 8);         // instant gyro z, in radians
+          float f_mx = R4(buffer, 29);
+          float f_my = R4(buffer, 29 + 4);
+          float f_mz = R4(buffer, 29 + 8);
+          float f_mt = R4(buffer, 29 + 12);
 
-          float mx = R4(buffer, 25);                    // magnetic x
-          float my = R4(buffer, 25 + 4);                // magnetic y
-          float mz = R4(buffer, 25 + 8);                // magnetic z
-          
-   
-          RCLCPP_INFO(get_logger(), "GYRO %f,%f,%f",
-            radsGyroX,
-            radsGyroY,
-            radsGyroZ
+          RCLCPP_INFO(get_logger(), "MAGR %f,%f,%f",
+            f_mx,
+            f_my,
+            f_mz
+          );    
+
+          RCLCPP_INFO(get_logger(), "MAGF %d,%d,%d",
+            raw_mx,
+            raw_my,
+            raw_mz
           );
           
-
-          /*
-          RCLCPP_INFO(get_logger(), "ACCEL %f,%f,%f",
-            newtonsAccelX,
-            newtonsAccelY,
-            newtonsAccelZ
-          );  
-
-          RCLCPP_INFO(get_logger(), "MAG %f,%f,%f",
-            mx,
-            my,
-            mz
-          );
-          */       
-
-           
-
-        }
+        }        
 
       }
-    }
+
+    } // end receive callback
     
     void FximuNode::send_parameters(void) {
 
@@ -672,20 +812,20 @@ namespace drivers
         }
     }
 
-    void FximuNode::handle_sys_status(void) {
+    bool FximuNode::handle_sys_status(uint8_t current_status) {
 
         // sysctl packet: $, type, code, reserved(6), checksum, \n
 
-        if(sys_status != prev_sys_status) {
+        if(current_status != prev_sys_status) {
 
-            RCLCPP_INFO(this->get_logger(), "status flag has changed to %d", sys_status);
+            RCLCPP_INFO(this->get_logger(), "sys_status has changed to %d", sys_status);
 
-            if((sys_status & 0b01000000) == 64) {
+            if((current_status & 0b01000000) == 64) {
 
                 // send reset if bit6 is set, usb connection will crash, so lifecycle node has to respawn
                 // for old node to shutdown properly takes ~20 seconds
-                /*
-                RCLCPP_INFO(this->get_logger(), "restarting IMU device");
+
+                RCLCPP_INFO(this->get_logger(), "sending reset command to IMU device");
                 RCLCPP_INFO(this->get_logger(), "restarting lifecycle node. will take 20 seconds");
 
                 uint8_t tx_param[PARAM_PACKET_SIZE] = {0};
@@ -701,13 +841,12 @@ namespace drivers
                 std::vector<uint8_t> tx_vector(tx_param, tx_param + PARAM_PACKET_SIZE);
                 m_serial_driver->port()->send(tx_vector); 
                 rclcpp::sleep_for(std::chrono::milliseconds(100));
-                */
                 
-            } else if((sys_status & 0b00100000) == 32) {
+                
+            } else if((current_status & 0b00100000) == 32) {
 
-                /*
                 // send soft reset if bit5 is set
-                RCLCPP_INFO(this->get_logger(), "soft resetting IMU device");
+                RCLCPP_INFO(this->get_logger(), "sending soft reset command to IMU device");
 
                 uint8_t tx_param[PARAM_PACKET_SIZE] = {0};
                 memset(tx_param, 0, PARAM_PACKET_SIZE);
@@ -721,12 +860,16 @@ namespace drivers
 
                 std::vector<uint8_t> tx_vector(tx_param, tx_param + PARAM_PACKET_SIZE);
                 m_serial_driver->port()->send(tx_vector); 
-                rclcpp::sleep_for(std::chrono::milliseconds(100));*/
+                rclcpp::sleep_for(std::chrono::milliseconds(100));
 
             } 
 
-            prev_sys_status = sys_status; // set previous_status
+            prev_sys_status = current_status; // set previous_status
+            return true;
+        } else {
+          return false;
         }
+
     }
 
   } // CLASS END

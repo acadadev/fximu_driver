@@ -32,9 +32,7 @@
 extern "C" {
 #endif
 
-// TODO: order
-
-#define SIZE_PARAMS_UINT8 13
+#define SIZE_PARAMS_UINT8 15
 const char *names_uint8[SIZE_PARAMS_UINT8] = {
                               "gyroODR",
                               "gyroFSR",
@@ -48,12 +46,14 @@ const char *names_uint8[SIZE_PARAMS_UINT8] = {
                               "gyroUIFilterIndex",
                               "accelUIFilterOrder",
                               "accelUIFilterIndex",
-                              "steadyLimit"
+                              "steadyLimit",
+                              "magOdr",
+                              "magAvg"
                             };                                
 
 #define SIZE_PARAMS_UINT16 2
 const char *names_uint16[SIZE_PARAMS_UINT16] = {
-                               "timer0Frq",
+                               "timer0Sec",
                                "timer1Sec"
                              };
 
@@ -67,17 +67,30 @@ const char *names_int16[SIZE_PARAMS_INT16] = {
                               "offsetAccelZ"
                             };
 
-#define SIZE_PARAMS_FLOAT 9
+#define SIZE_PARAMS_FLOAT 22
 const char *names_float[] = {
                               "kDeltaAccelerationThreshold",
                               "kDeltaAngularThreshold",
                               "kAngularThreshold",
                               "notchFilterFHZ",
-                              "gainACC",
-                              "gainMAG",
+                              "filterGainAccel",
+                              "filterGainMag",
                               "biasAlpha",
                               "gainAlpha",
-                              "stableAlpha"
+                              "stableAlpha",
+                              "magAlpha",
+                              "magBiasX",
+                              "magBiasY",
+                              "magBiasZ",
+                              "magSoftA1",
+                              "magSoftA2",
+                              "magSoftA3",
+                              "magSoftB1",
+                              "magSoftB2",
+                              "magSoftB3",
+                              "magSoftC1",
+                              "magSoftC2",
+                              "magSoftC3"
                             };
 
 #define SIZE_PARAMS_BOOL 10

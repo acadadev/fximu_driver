@@ -1,6 +1,8 @@
 #ifndef FXIMU_DRIVER__FXIMU_DRIVER_HPP_
 #define FXIMU_DRIVER__FXIMU_DRIVER_HPP_
 
+// TODO: uniformize the ifndef... in all
+
 #include <memory>
 #include <string>
 

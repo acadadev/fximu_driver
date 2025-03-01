@@ -10,7 +10,7 @@
                                               # uint8 section
     gyroODR: 6                                # gyro measurement speed
     gyroFSR: 0                                # gyro sensitivity
-    accelODR: 6                               # acceletometer measurement speed
+    accelODR: 6                               # accelerometer measurement speed
     accelFSR: 0                               # acceletometer sensitivity
 
     notchFilterBW: 2                          # sensor level gyro notch filter bandwidth select
@@ -24,9 +24,13 @@
     accelUIFilterOrder: 2                     # accel UI filter order
     accelUIFilterIndex: 1                     # accel UI filter index
 
-    steadyLimit: 3                            # steady thresholds not exceeded 
+    steadyLimit: 3                            # steady thresholds not exceeded
+
+    magOdr: 0x4                               # 100hz
+    magAvg: 0x2                               # 4
+
                                               # uint16 section
-    timer0Frq: 4                              # timer0 frequency
+    timer0Sec: 4                              # timer0 seconds TODO: document
     timer1Sec: 5                              # initial calibration seconds
                                               # int16 section
     offsetGyroX: 0                            # gyro offset x
@@ -39,12 +43,16 @@
     kDeltaAccelerationThreshold: 10.0         # steady detection threshold, acceleration change
     kDeltaAngularThreshold: 4.0               # steady detection threshold, angular change
     kAngularThreshold: 1.0                    # steady detection threshold, angular limit
-    notchFilterFHZ: 1.449                     #
-    gainACC: 0.01                             # device acceletometer gain
-    gainMAG: 0.001                            # device magnetometer gain
-    biasAlpha: 0.01                           #
-    gainAlpha: 0.9                            #
-    stableAlpha: 0.05                         #    
+
+    notchFilterFHZ: 1.449                     # notch filter fhz, consult datasheet
+
+    filterGainAccel: 0.02                     # filter acceletometer gain
+    filterGainMag: 0.001                      # filter magnetometer gain
+
+    biasAlpha: 0.01                           # used for calculating biases
+    gainAlpha: 0.95                           # used for calculating adaptive gain
+    stableAlpha: 0.05                         # used for determining initial measurement
+    magAlpha: 0.05                            # used for averaging magneto data
 
     enableNotchFilter: true                   # enable sensor level notch filter
     enableAAFilter: true                      # enable sensor level anti aliasing filter
@@ -61,3 +69,18 @@
 
     imu_frame_id: imu_link                    # link name for imu message
     mag_frame_id: imu_link                    # link name for mag sensor message
+
+    magBiasX: -5.50897506                     # magnetometer hard iron compensation
+    magBiasY: -22.28865404
+    magBiasZ: -12.588596
+
+    magSoftA1: 0.99099148                     # magnetometer soft iron compensation
+    magSoftA2: -0.00244458
+    magSoftA3: 0.00608297
+    magSoftB1: -0.00244458
+    magSoftB2: 0.99692359
+    magSoftB3: 0.00153484
+    magSoftC1: 0.00608297 
+    magSoftC2: 0.00153484 
+    magSoftC3: 1.01225023
+

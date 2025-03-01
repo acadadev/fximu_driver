@@ -18,8 +18,12 @@
 namespace lc = rclcpp_lifecycle;
 using LNI = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface;
 
+#include <geometry_msgs/msg/quaternion.hpp>
+#include <geometry_msgs/msg/vector3.hpp>
+
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/magnetic_field.hpp>
+
 
 using sensor_msgs::msg::Imu;
 using sensor_msgs::msg::MagneticField;
@@ -35,21 +39,14 @@ namespace drivers
         explicit FximuNode(const rclcpp::NodeOptions & options);
 
         FximuNode(const rclcpp::NodeOptions & options, const IoContext & ctx);
-
         ~FximuNode();
 
         LNI::CallbackReturn on_configure(const lc::State & state) override;
-
         LNI::CallbackReturn on_activate(const lc::State & state) override;
-
         LNI::CallbackReturn on_deactivate(const lc::State & state) override;
-
         LNI::CallbackReturn on_cleanup(const lc::State & state) override;
-
         LNI::CallbackReturn on_shutdown(const lc::State & state) override;
-
         //void subscriber_callback(const UInt8MultiArray::SharedPtr msg);
-
         void receive_callback(const std::vector<uint8_t> & buffer, const size_t & bytes_transferred);
 
       private:
@@ -68,7 +65,7 @@ namespace drivers
         void get_serial_parameters(void);
         void get_device_parameters(void);
         void send_parameters(void);
-        void handle_sys_status(void);
+        bool handle_sys_status(uint8_t current_status);
 
         void send_sync_packet(bool immediate);
 

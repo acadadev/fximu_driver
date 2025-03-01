@@ -44,14 +44,14 @@ uint16_t U2(const std::vector<uint8_t> & buffer, size_t offset = 0) {
   return u;	
 }
 
-uint16_t I2(const std::vector<uint8_t> & buffer, size_t offset = 0) {
+int16_t I2(const std::vector<uint8_t> & buffer, size_t offset = 0) {
   int16_t u;
   const uint8_t *p = &buffer[offset];
   memcpy(&u, p, 2);
   return u; 
 }
 
-uint16_t I4(const std::vector<uint8_t> & buffer, size_t offset = 0) {
+int32_t I4(const std::vector<uint8_t> & buffer, size_t offset = 0) {
   int32_t u;
   const uint8_t *p = &buffer[offset];
   memcpy(&u, p, 4);
