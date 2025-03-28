@@ -18,6 +18,9 @@ using lifecycle_msgs::msg::State;
 // TODO: guaranteeing no collision. 
 // TODO: we can use a semaphore inn hardware part.
 
+// TODO: ENU or NED? option to select/ right now its wrong.
+// TODO: also remove imu is parket drong gravity.
+
 namespace drivers
 {
   namespace fximu_driver
@@ -569,7 +572,6 @@ namespace drivers
           sys_status = buffer[61];
           handle_sys_status(sys_status);
 
-          /*
           RCLCPP_INFO(get_logger(), "wx: %.6f, wy: %.6f, wz: %.6f, temp: %.2fC",
             wx_bias,
             wy_bias,
@@ -577,6 +579,7 @@ namespace drivers
             mag_temp
           );
 
+          /*
           RCLCPP_INFO(get_logger(), "posix: %u, recs: %u, recns: %u, mcus: %u, mcuns: %u",
             posix_time,
             received_second,
