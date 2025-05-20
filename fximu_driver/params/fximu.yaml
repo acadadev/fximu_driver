@@ -63,9 +63,9 @@
     enableAdaptiveBias: true                  # enable device adaptive bias
     enableAdaptiveGain: true                  # enable device acceletometer adaptive gain
 
-    enableMagnetometer: true                  # enable magnetometer device
+    enableMagnetometer: false                  # enable magnetometer device
     useMagnetometerData: false                # use magnetometer data for correcting orientation
-    pubMagnetometerData: true                 # publish magnetometer data
+    pubMagnetometerData: false                 # publish magnetometer data
 
     imu_frame_id: imu_link                    # link name for imu message
     mag_frame_id: imu_link                    # link name for mag sensor message

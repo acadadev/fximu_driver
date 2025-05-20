@@ -1,8 +1,4 @@
 #include "fximu_driver/serial_port.hpp"
-
-#include <string>
-#include <utility>
-
 #include <rclcpp/logging.hpp>
 
 namespace drivers
@@ -13,8 +9,7 @@ namespace drivers
     SerialPort::SerialPort(
       const IoContext & ctx,
       const std::string & device_name,
-      const SerialPortConfig serial_port_config)
-    : m_ctx(ctx),
+      const SerialPortConfig serial_port_config): m_ctx(ctx),
       m_device_name(device_name),
       m_serial_port(ctx.ios()),
       m_port_config(serial_port_config)
@@ -23,7 +18,7 @@ namespace drivers
     }
 
     SerialPort::~SerialPort() {
-      if (is_open()) {
+      if(is_open()) {
         close();
       }
     }

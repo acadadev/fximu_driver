@@ -58,15 +58,6 @@ int32_t I4(const std::vector<uint8_t> & buffer, size_t offset = 0) {
   return u; 
 }
 
-uint32_t min(uint32_t a, uint32_t b) {
-    if(a < b) { return a; } else { return b; }
-}
-
-uint32_t cyclic_distance_ns(uint32_t a, uint32_t b) {
-    uint32_t abs_distance = abs(a - b);
-    return min(abs_distance, (1000000000 - abs_distance));  
-}
-
 static const uint8_t CRC_TABLE[256] = {
     0x00, 0x07, 0x0E, 0x09, 0x1C, 0x1B, 0x12, 0x15,
     0x38, 0x3F, 0x36, 0x31, 0x24, 0x23, 0x2A, 0x2D,

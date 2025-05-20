@@ -3,12 +3,6 @@
 #include <memory>
 #include <string>
 
-// TODO: MASTER LIST
-// TODO: test_serial_driver.cpp, test_serial_port.cpp
-// TODO: windows compatibility
-// TODO: github workflow
-// TODO: turn all to cpp
-
 namespace drivers
 {
   namespace fximu_driver

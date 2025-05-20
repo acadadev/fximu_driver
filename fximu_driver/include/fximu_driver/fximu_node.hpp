@@ -1,12 +1,20 @@
-#ifndef FXIMU_DRIVER__FXIMU_NODE_HPP_
-#define FXIMU_DRIVER__FXIMU_NODE_HPP_
+#ifndef FXIMU_DRIVER_FXIMU_NODE_HPP_
+#define FXIMU_DRIVER_FXIMU_NODE_HPP_
+
+#define STATUS_OK 0x00
+#define STATUS_SEQ_REPEAT 0x01
+#define STATUS_SEQ_JUMP 0x02
+#define STATUS_CHECKSUM_ERROR 0x03
+#define STATUS_SKIP_SECOND 0x04
+#define STATUS_SKIP_NANOS 0x5
+#define STATUS_OUT_SYNC 0x06
 
 #include "fximu_driver/fximu_driver.hpp"
+#include "fximu_driver/adaptive_filter.h"
 
 #include <memory>
 #include <string>
 #include <vector>
-
 #include <ctime>
 #include <iostream>
 #include <chrono>
@@ -15,15 +23,15 @@
 #include <rclcpp_lifecycle/lifecycle_node.hpp>
 #include <lifecycle_msgs/msg/state.hpp>
 
-namespace lc = rclcpp_lifecycle;
-using LNI = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface;
-
 #include <geometry_msgs/msg/quaternion.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
-
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/magnetic_field.hpp>
 
+namespace lc = rclcpp_lifecycle;
+using LNI = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface;
+
+#define USE_HIGH_PRECISION_CLOCK 1
 
 using sensor_msgs::msg::Imu;
 using sensor_msgs::msg::MagneticField;
@@ -39,15 +47,26 @@ namespace drivers
         explicit FximuNode(const rclcpp::NodeOptions & options);
 
         FximuNode(const rclcpp::NodeOptions & options, const IoContext & ctx);
-        ~FximuNode();
+        ~FximuNode() override;
 
         LNI::CallbackReturn on_configure(const lc::State & state) override;
         LNI::CallbackReturn on_activate(const lc::State & state) override;
         LNI::CallbackReturn on_deactivate(const lc::State & state) override;
         LNI::CallbackReturn on_cleanup(const lc::State & state) override;
         LNI::CallbackReturn on_shutdown(const lc::State & state) override;
-        //void subscriber_callback(const UInt8MultiArray::SharedPtr msg);
+
+        // void subscriber_callback(const UInt8MultiArray::SharedPtr msg);
+
         void receive_callback(const std::vector<uint8_t> & buffer, const size_t & bytes_transferred);
+        auto get_time(){
+          #ifdef USE_MONOTONIC_CLOCK
+            return std::chrono::steady_clock::now();
+          #elif USE_HIGH_PRECISION_CLOCK
+            return std::chrono::high_resolution_clock::now();
+          #else
+            return std::chrono::system_clock::now();
+          #endif
+        }
 
       private:
 
@@ -62,24 +81,25 @@ namespace drivers
         lc::LifecyclePublisher<Imu>::SharedPtr imu_publisher;    
         lc::LifecyclePublisher<MagneticField>::SharedPtr mag_publisher;     
 
-        void get_serial_parameters(void);
-        void get_device_parameters(void);
-        void send_parameters(void);
+        void get_serial_parameters();
+        void get_device_parameters();
+        void send_parameters();
         bool handle_sys_status(uint8_t current_status);
+        void send_init_sync();
+        void send_mcu_sync(uint32_t seconds, uint32_t nanos);
 
-        void send_sync_packet(bool immediate);
+        uint8_t sys_status;                   // current system status
+        uint8_t prev_sys_status;              // previous system status
+        uint8_t packet_seq;                   // current packet sequence
+        uint8_t prev_packet_seq;              // previous packet sequence
+        uint8_t read_state;                   // serial read state
 
-        double avg_rtc;
-        double avg_nanos;
+        AdaptiveFilter* filter_timing;
 
-        bool timer_second_sent = false;
-        uint32_t timer_prev_seconds = 0;
+        double avg_nanos_diff;
 
-        uint8_t sys_status;
-        uint8_t prev_sys_status;
-
-        rclcpp::TimerBase::SharedPtr timer_sync;
-        //rclcpp::Subscription<UInt8MultiArray>::SharedPtr m_subscriber;       
+        uint32_t prev_device_posix_time = 0;
+        uint32_t prev_device_nanos = 0;
 
     };
   }

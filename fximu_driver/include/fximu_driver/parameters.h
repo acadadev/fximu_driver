@@ -1,5 +1,5 @@
-#ifndef __PARAMETERS_H_
-#define	__PARAMETERS_H_
+#ifndef PARAMETERS_H_
+#define	PARAMETERS_H_
 
 #define IMU_DATA_SIZE 64
 #define PARAM_PACKET_SIZE 12
@@ -33,7 +33,7 @@ extern "C" {
 #endif
 
 #define SIZE_PARAMS_UINT8 15
-const char *names_uint8[SIZE_PARAMS_UINT8] = {
+inline const char *names_uint8[SIZE_PARAMS_UINT8] = {
                               "gyroODR",
                               "gyroFSR",
                               "accelODR",
@@ -52,13 +52,13 @@ const char *names_uint8[SIZE_PARAMS_UINT8] = {
                             };                                
 
 #define SIZE_PARAMS_UINT16 2
-const char *names_uint16[SIZE_PARAMS_UINT16] = {
+inline const char *names_uint16[SIZE_PARAMS_UINT16] = {
                                "timer0Sec",
                                "timer1Sec"
                              };
 
 #define SIZE_PARAMS_INT16 6
-const char *names_int16[SIZE_PARAMS_INT16] = {
+inline const char *names_int16[SIZE_PARAMS_INT16] = {
                               "offsetGyroX",
                               "offsetGyroY",
                               "offsetGyroZ",
@@ -68,7 +68,7 @@ const char *names_int16[SIZE_PARAMS_INT16] = {
                             };
 
 #define SIZE_PARAMS_FLOAT 22
-const char *names_float[] = {
+inline const char *names_float[] = {
                               "kDeltaAccelerationThreshold",
                               "kDeltaAngularThreshold",
                               "kAngularThreshold",
@@ -94,7 +94,7 @@ const char *names_float[] = {
                             };
 
 #define SIZE_PARAMS_BOOL 10
-const char *names_bool[SIZE_PARAMS_BOOL] = {
+inline const char *names_bool[SIZE_PARAMS_BOOL] = {
                              "enableNotchFilter",
                              "enableAAFilter",
                              "enableUIFilter",
@@ -108,7 +108,7 @@ const char *names_bool[SIZE_PARAMS_BOOL] = {
                             };
 
 #define SIZE_PARAMS_STRING 2
-const char *names_string[SIZE_PARAMS_STRING] = {
+inline const char *names_string[SIZE_PARAMS_STRING] = {
                              "imu_frame_id",
                              "mag_frame_id"
                             };
