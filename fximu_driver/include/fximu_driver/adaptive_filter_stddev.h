@@ -7,32 +7,31 @@
 class AdaptiveFilter {
 
     private:
+
         const double initial_alpha = 0.3;     // starting learning rate (more aggressive)
         const double final_alpha = 0.001;     // final learning rate
         const uint32_t warmup_samples = 128;  // number of samples for initial adaptation
 
         double avg_nanos_diff;                // nano second delta
-        uint32_t sample_count;                // number of samples measured
         bool warmed_up;                       // if filter has converged
-
+        uint32_t filter_sample_count;         // number of samples measured
+        uint32_t period_sample_count;         // number of samples measured for a period of statistics
         double period_M2;                     // sum of squares of differences from current mean
-        uint32_t period_sample_count;
+
 
 public:
 
     AdaptiveFilter(double initial_value = 0.0) :
         avg_nanos_diff(initial_value),
-        sample_count(0),
         warmed_up(false),
-        period_M2(0.0),
-        period_sample_count(0) { }
+        filter_sample_count(0),
+        period_sample_count(0),
+        period_M2(0.0) { }
 
     void update(int32_t nanos_diff) {
 
-        sample_count++;
-
-        // update Welford's algorithm variables for running variance
-        period_sample_count++;
+        filter_sample_count++;           // filter sample count
+        period_sample_count++;    // update Welford's algorithm variables for running variance
         double delta = nanos_diff - getAverage();
         period_M2 += delta * delta;
 
@@ -40,8 +39,8 @@ public:
         double alpha;
         if(warmed_up) {
             alpha = final_alpha;
-        } else if (sample_count < warmup_samples) {
-            alpha = initial_alpha - (initial_alpha - final_alpha) * (static_cast<double>(sample_count) / warmup_samples);
+        } else if (filter_sample_count < warmup_samples) {
+            alpha = initial_alpha - (initial_alpha - final_alpha) * (static_cast<double>(filter_sample_count) / warmup_samples);
         } else {
             alpha = final_alpha;
             warmed_up = true;
@@ -62,7 +61,7 @@ public:
     }
 
     double getAverage() const { return avg_nanos_diff; }
-    uint32_t getSampleCount() const { return sample_count; }
+    uint32_t getSampleCount() const { return filter_sample_count; }
     bool isWarmedUp() const { return warmed_up; }
 };
 
