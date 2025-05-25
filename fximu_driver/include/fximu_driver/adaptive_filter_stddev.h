@@ -15,7 +15,6 @@ class AdaptiveFilter {
         uint32_t sample_count;                // number of samples measured
         bool warmed_up;                       // if filter has converged
 
-        double period_mean;                   // Welford's algorithm variables for running variance calculation
         double period_M2;                     // sum of squares of differences from current mean
         uint32_t period_sample_count;
 
@@ -25,7 +24,6 @@ public:
         avg_nanos_diff(initial_value),
         sample_count(0),
         warmed_up(false),
-        period_mean(0.0),
         period_M2(0.0),
         period_sample_count(0) { }
 
@@ -35,10 +33,8 @@ public:
 
         // update Welford's algorithm variables for running variance
         period_sample_count++;
-        double delta = nanos_diff - period_mean;
-        period_mean += delta / period_sample_count;
-        double delta2 = nanos_diff - period_mean;
-        period_M2 += delta * delta2;
+        double delta = nanos_diff - getAverage();
+        period_M2 += delta * delta;
 
         // calculate dynamic alpha
         double alpha;
@@ -55,32 +51,14 @@ public:
         avg_nanos_diff = (avg_nanos_diff * (1.0 - alpha)) + (nanos_diff * alpha);
     }
 
-    struct Statistics {
-        double average;
-        double std_dev;     // standard deviation
-        uint32_t sample_count;
-    };
-
-    Statistics getStatistics() {
-
+    double getStdDev() {
         double std_dev = 0.0;
-
         if (period_sample_count > 1) {
             std_dev = std::sqrt(period_M2 / period_sample_count);
         }
-
-        Statistics stats = {
-            period_mean,
-            std_dev,
-            period_sample_count
-        };
-
-        // reset period tracking
-        period_mean = 0.0;
         period_M2 = 0.0;
         period_sample_count = 0;
-
-        return stats;
+        return std_dev;
     }
 
     double getAverage() const { return avg_nanos_diff; }

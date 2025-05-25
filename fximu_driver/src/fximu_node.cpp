@@ -700,10 +700,9 @@ namespace drivers
           packet_count++;
 
           if(packet_count % 1024 == 0) {
-            RCLCPP_ERROR(this->get_logger(), "avg: %f std.avg %f std.dev %f",
+            RCLCPP_ERROR(this->get_logger(), "avg: %f std.dev %f",
                          filter_timing->getAverage(),
-                         filter_timing->getStatistics().average,
-                         filter_timing->getStatistics().std_dev);
+                         filter_timing->getStdDev());
             // mcu_sync(true);
           }
 
