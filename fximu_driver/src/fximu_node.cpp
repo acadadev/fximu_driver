@@ -469,7 +469,7 @@ namespace drivers
           // Bit 5: soft restart required
           if ((current_sys_status >> 5) & 1) { // Check if bit 5 is set
 
-            RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 5 (0x20): Soft Restart Required");
+            RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 5 (0x20): Sensor Restart Required");
 
             // send soft reset if bit5 is set
             uint8_t tx_param[PARAM_PACKET_SIZE] = {0};
@@ -503,7 +503,7 @@ namespace drivers
 
           // Bit 1: sensor restarted
           if ((current_sys_status >> 1) & 1) { // Check if bit 1 is set
-            RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 1 (0x02): Sensor Restarted");
+            RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 1 (0x02): Sensor Restart Complete");
           }
 
           // Bit 0: initial calibration failed due to non-steady state
