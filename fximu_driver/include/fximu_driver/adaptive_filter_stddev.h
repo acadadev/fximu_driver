@@ -62,7 +62,9 @@ public:
     };
 
     Statistics getStatistics() {
+
         double std_dev = 0.0;
+
         if (period_sample_count > 1) {
             std_dev = std::sqrt(period_M2 / period_sample_count);
         }
