@@ -62,7 +62,7 @@
     enableAdaptiveBias: true                  # enable device adaptive bias
     enableAdaptiveGain: true                  # enable device acceletometer adaptive gain
 
-    enableMagnetometer: true                 # enable magnetometer device
+    enableMagnetometer: false                 # enable magnetometer device
     useMagnetometerData: false                # use magnetometer data for correcting orientation
     pubMagnetometerData: false                # publish magnetometer data
 

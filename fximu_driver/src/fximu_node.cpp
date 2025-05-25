@@ -699,8 +699,11 @@ namespace drivers
           // handle sys status as last of the chain, increment packet_counter beforehand
           packet_count++;
 
-          if(packet_count % 4096 == 0) {
-            RCLCPP_ERROR(this->get_logger(), "avg nanos diff: %f", filter_timing->getAverage());
+          if(packet_count % 1024 == 0) {
+            RCLCPP_ERROR(this->get_logger(), "avg: %f std.avg %f std.dev %f",
+                         filter_timing->getAverage(),
+                         filter_timing->getStatistics().average,
+                         filter_timing->getStatistics().std_dev);
             // mcu_sync(true);
           }
 
