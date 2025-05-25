@@ -27,15 +27,7 @@ namespace drivers
     {
       public:
 
-        SerialPortConfig(
-          uint32_t baud_rate,
-          FlowControl flow_control,
-          Parity parity,
-          StopBits stop_bits)
-        : m_baud_rate{baud_rate},
-          m_flow_control{flow_control},
-          m_parity{parity},
-          m_stop_bits{stop_bits}
+        SerialPortConfig(uint32_t baud_rate, FlowControl flow_control, Parity parity, StopBits stop_bits) : m_baud_rate{baud_rate}, m_flow_control{flow_control}, m_parity{parity}, m_stop_bits{stop_bits}
         {}
 
         uint32_t get_baud_rate() const

@@ -1,8 +1,5 @@
 #include "fximu_driver/fximu_driver.hpp"
 
-#include <memory>
-#include <string>
-
 namespace drivers
 {
   namespace fximu_driver

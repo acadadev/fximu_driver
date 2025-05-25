@@ -61,6 +61,7 @@ if(BUILD_TESTING)
 endif()
 
 ament_auto_package(
+  USE_SCOPED_HEADER_INSTALL_DIR
   CONFIG_EXTRAS_POST "fximu_driver-extras.cmake"
   INSTALL_TO_SHARE
     launch

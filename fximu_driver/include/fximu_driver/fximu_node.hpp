@@ -18,6 +18,7 @@
 #include <ctime>
 #include <iostream>
 #include <chrono>
+#include <cstdlib>
 
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_lifecycle/lifecycle_node.hpp>
@@ -58,6 +59,7 @@ namespace drivers
         // void subscriber_callback(const UInt8MultiArray::SharedPtr msg);
 
         void receive_callback(const std::vector<uint8_t> & buffer, const size_t & bytes_transferred);
+
         auto get_time(){
           #ifdef USE_MONOTONIC_CLOCK
             return std::chrono::steady_clock::now();
@@ -81,25 +83,29 @@ namespace drivers
         lc::LifecyclePublisher<Imu>::SharedPtr imu_publisher;    
         lc::LifecyclePublisher<MagneticField>::SharedPtr mag_publisher;     
 
+        void reset_driver();
         void get_serial_parameters();
-        void get_device_parameters();
+        void declare_parameters();
         void send_parameters();
         bool handle_sys_status(uint8_t current_status);
-        void send_init_sync();
-        void send_mcu_sync(uint32_t seconds, uint32_t nanos);
+        void init_sync();
+        void mcu_sync(bool send_async);
 
-        uint8_t sys_status;                   // current system status
-        uint8_t prev_sys_status;              // previous system status
-        uint8_t packet_seq;                   // current packet sequence
-        uint8_t prev_packet_seq;              // previous packet sequence
-        uint8_t read_state;                   // serial read state
+        int8_t read_state = -1;               // serial read state
+
+        uint8_t sys_status = 0;               // current system status
+        uint8_t prev_sys_status = 0;          // previous system status
+
+        uint8_t packet_seq = 0;               // current packet sequence
+        uint8_t prev_packet_seq = 0;          // previous packet sequence
+
+        uint32_t packet_count = 0;            // packet counter
+
+        bool enable_magneto = false;          // enable magnetometer
+        bool publish_magneto = false;         // publish magnetometer data
 
         AdaptiveFilter* filter_timing;
-
-        double avg_nanos_diff;
-
-        uint32_t prev_device_posix_time = 0;
-        uint32_t prev_device_nanos = 0;
+        AdaptiveFilter* filter_rtc_offset;
 
     };
   }

@@ -2,8 +2,6 @@
 #include "fximu_driver/parameters.h"
 #include "fximu_driver/fximu_node.hpp"
 
-#include <cstdlib>
-
 #define DEC_POINTS 5
 
 namespace lc = rclcpp_lifecycle;
@@ -13,9 +11,8 @@ using lifecycle_msgs::msg::State;
 using namespace std::chrono;
 using timestamp = std::pair<seconds, nanoseconds>;
 
-// TODO: magnetometer auto calibration above
 // TODO: ENU or NED? option to select/ right now its wrong.
-// TODO: also remove imu is packet wrong gravity.
+// TODO: AUDIT: is gravity removed, is there a boolean for it? is it removed wrong from the packet.
 
 namespace drivers
 {
@@ -25,15 +22,19 @@ namespace drivers
     FximuNode::FximuNode(const rclcpp::NodeOptions & options)
     : lc::LifecycleNode("fximu_node", options), m_owned_ctx{new IoContext(2)}, m_serial_driver{new FximuDriver(*m_owned_ctx)}
     {
-      get_serial_parameters();
-      filter_timing = new AdaptiveFilter();
+      get_serial_parameters();                   // get serial parameters for connection
+      declare_parameters();                      // get device parameters with default from yaml file
+      filter_timing = new AdaptiveFilter();      // timing filter for imu packet delay
+      filter_rtc_offset = new AdaptiveFilter();  // filter for rtc offset
     }
 
     FximuNode::FximuNode(const rclcpp::NodeOptions & options, const IoContext & ctx)
     : lc::LifecycleNode("fximu_node", options), m_serial_driver{new FximuDriver(ctx)}
     {
-      get_serial_parameters();
-      filter_timing = new AdaptiveFilter();
+      get_serial_parameters();                   // get serial parameters for connection
+      declare_parameters();                      // get device parameters with default from yaml file
+      filter_timing = new AdaptiveFilter();      // timing filter for imu packet delay
+      filter_rtc_offset = new AdaptiveFilter();  // filter for rtc offset
     }
 
     FximuNode::~FximuNode() {
@@ -46,8 +47,13 @@ namespace drivers
 
       (void)state;
 
-      // create serial connection
-      try {
+      // create publishers, must be done after declaring parameters
+      imu_publisher = this->create_publisher<sensor_msgs::msg::Imu>("/imu/data", rclcpp::QoS{100});
+      if(enable_magneto && publish_magneto) {
+        mag_publisher = this->create_publisher<sensor_msgs::msg::MagneticField>("/imu/mag", rclcpp::QoS{100});
+      }
+
+      try {																				// create serial connection
         m_serial_driver->init_port(m_device_name, *m_device_config);
         if (!m_serial_driver->port()->is_open()) {
           m_serial_driver->port()->open();
@@ -55,29 +61,19 @@ namespace drivers
       } catch (const std::exception & ex) {
         RCLCPP_ERROR(get_logger(), "error creating serial port: %s - %s", m_device_name.c_str(), ex.what());
         return LNI::CallbackReturn::FAILURE;
-      }   
+      }
 
-      // get device parameters with default from yaml file
-      get_device_parameters(); 
-
-      // send device parameters
-      send_parameters();
-
-      // TODO: notice this was removed and important request sys status, see if need a reset
-
-      // send sync packet, block until beginning of second
-      send_init_sync();
-
-      // create publisher
-      imu_publisher = this->create_publisher<sensor_msgs::msg::Imu>("/imu/data", rclcpp::QoS{100});
-      mag_publisher = this->create_publisher<sensor_msgs::msg::MagneticField>("/imu/mag", rclcpp::QoS{100});
-
-      // start receiving data
+      // must start receiving data before sending parameters
       m_serial_driver->port()->async_receive(
         std::bind(&FximuNode::receive_callback, this, std::placeholders::_1, std::placeholders::_2)
-      );   
+      );
 
-      RCLCPP_INFO(get_logger(), "FXIMU successfully configured.");
+      send_parameters();																// send device parameters
+      rclcpp::sleep_for(std::chrono::milliseconds(3000));                               // 3 second pause
+      init_sync();																	    // send sync packet, block until beginning of second
+                                                                                        // init_sync also enables sending of imu packets
+
+      RCLCPP_INFO(get_logger(), "FXIMU lifecycle successfully configured");
 
       return LNI::CallbackReturn::SUCCESS;
     }
@@ -85,16 +81,20 @@ namespace drivers
     LNI::CallbackReturn FximuNode::on_activate(const lc::State & state) {
       (void)state;
       imu_publisher->on_activate();
-      mag_publisher->on_activate();
-      RCLCPP_INFO(get_logger(), "FXIMU activated.");
+      if(enable_magneto && publish_magneto) {
+        mag_publisher->on_activate();
+      }
+      RCLCPP_INFO(get_logger(), "FXIMU lifecycle activated");
       return LNI::CallbackReturn::SUCCESS;
     }
 
     LNI::CallbackReturn FximuNode::on_deactivate(const lc::State & state) {
       (void)state;
       imu_publisher->on_deactivate();
-      mag_publisher->on_deactivate();
-      RCLCPP_INFO(get_logger(), "FXIMU deactivated.");
+      if(enable_magneto && publish_magneto) {
+        mag_publisher->on_deactivate();
+      }
+      RCLCPP_INFO(get_logger(), "FXIMU lifecycle deactivated");
       return LNI::CallbackReturn::SUCCESS;
     }
 
@@ -102,15 +102,40 @@ namespace drivers
       (void)state;
       m_serial_driver->port()->close();
       imu_publisher.reset();
-      mag_publisher.reset();
-      RCLCPP_INFO(get_logger(), "FXIMU cleaned up.");
+      if(enable_magneto && publish_magneto) {
+        mag_publisher.reset();
+      }
+      RCLCPP_INFO(get_logger(), "FXIMU lifecycle cleaned up");
       return LNI::CallbackReturn::SUCCESS;
     }
 
     LNI::CallbackReturn FximuNode::on_shutdown(const lc::State & state) {
       (void)state;
-      RCLCPP_INFO(get_logger(), "FXIMU shutting down.");
+      RCLCPP_INFO(get_logger(), "FXIMU lifecycle shutting down");
       return LNI::CallbackReturn::SUCCESS;
+    }
+
+    void FximuNode::reset_driver() {
+
+      auto current_state = get_current_state();
+
+      // deactivate if enabled
+      if (current_state.id() == lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE) {
+        on_deactivate(current_state);
+      }
+
+      // cleanup
+      on_cleanup(current_state);
+
+      // configure
+      if (on_configure(current_state) != LNI::CallbackReturn::SUCCESS) {
+        RCLCPP_FATAL(get_logger(), "FXIMU lifecycle Reconfiguration failed!");
+        return;
+      }
+
+      // activate
+      on_activate(current_state);
+
     }
 
     void FximuNode::get_serial_parameters() {
@@ -184,7 +209,7 @@ namespace drivers
       m_device_config = std::make_unique<SerialPortConfig>(baud_rate, fc, pt, sb);
     }
 
-    void FximuNode::get_device_parameters() {
+    void FximuNode::declare_parameters() {
 
       try {
         
@@ -285,6 +310,10 @@ namespace drivers
         imu_frame_id = this->declare_parameter<std::string>("imu_frame_id", "imu_link");
         mag_frame_id = this->declare_parameter<std::string>("mag_frame_id", "mag_link");
 
+        // magnetometer enabled and whether we are publishing the data
+        enable_magneto = this->get_parameter("enableMagnetometer").as_bool();
+        publish_magneto = this->get_parameter("pubMagnetometerData").as_bool();
+
       } catch (rclcpp::ParameterTypeException & ex) {
         RCLCPP_ERROR(get_logger(), "parameter exception %s", ex.what());
         throw ex;
@@ -313,7 +342,7 @@ namespace drivers
           tx_param[10] = crc8ccitt(tx_param, 10);
           std::vector<uint8_t> tx_vector(tx_param, tx_param + PARAM_PACKET_SIZE);
           m_serial_driver->port()->send(tx_vector);
-          RCLCPP_INFO(get_logger(), "%s: %u", names_uint8[i], temp_uint8);
+          RCLCPP_DEBUG(this->get_logger(), "%s: %u", names_uint8[i], temp_uint8);
           rclcpp::sleep_for(std::chrono::milliseconds(10));
         }
 
@@ -333,7 +362,7 @@ namespace drivers
           tx_param[10] = crc8ccitt(tx_param, 10);
           std::vector<uint8_t> tx_vector(tx_param, tx_param + PARAM_PACKET_SIZE);
           m_serial_driver->port()->send(tx_vector);
-          RCLCPP_INFO(get_logger(), "%s: %u", names_uint16[i], temp_uint16);
+          RCLCPP_DEBUG(this->get_logger(), "%s: %u", names_uint16[i], temp_uint16);
           rclcpp::sleep_for(std::chrono::milliseconds(10));
         }
 
@@ -353,7 +382,7 @@ namespace drivers
           tx_param[10] = crc8ccitt(tx_param, 10);
           std::vector<uint8_t> tx_vector(tx_param, tx_param + PARAM_PACKET_SIZE);
           m_serial_driver->port()->send(tx_vector);
-          RCLCPP_INFO(get_logger(), "%s: %d", names_int16[i], temp_int16);
+          RCLCPP_DEBUG(this->get_logger(), "%s: %d", names_int16[i], temp_int16);
           rclcpp::sleep_for(std::chrono::milliseconds(10));
         }
 
@@ -363,7 +392,6 @@ namespace drivers
         tx_param[1] = PACKET_TYPE_PARAM;
         tx_param[2] = PARAM_TYPE_FLOAT;
         tx_param[11] = '\n';
-
 
         f32_to_ui8 u;
         for(uint8_t i=0; i < SIZE_PARAMS_FLOAT; i++) {
@@ -376,7 +404,7 @@ namespace drivers
           tx_param[10] = crc8ccitt(tx_param, 10);
           std::vector<uint8_t> tx_vector(tx_param, tx_param + PARAM_PACKET_SIZE);
           m_serial_driver->port()->send(tx_vector);
-          RCLCPP_INFO(get_logger(), "%s: %f", names_float[i], u.f32);
+          RCLCPP_DEBUG(this->get_logger(), "%s: %f", names_float[i], u.f32);
           rclcpp::sleep_for(std::chrono::milliseconds(10));
         }
 
@@ -395,116 +423,149 @@ namespace drivers
           tx_param[10] = crc8ccitt(tx_param, 10);
           std::vector<uint8_t> tx_vector(tx_param, tx_param + PARAM_PACKET_SIZE);
           m_serial_driver->port()->send(tx_vector);
-          RCLCPP_INFO(get_logger(), "%s: %u", names_bool[i], temp_bool);
+          RCLCPP_DEBUG(this->get_logger(), "%s: %u", names_bool[i], temp_bool);
           rclcpp::sleep_for(std::chrono::milliseconds(10));
         }
     }
 
-    bool FximuNode::handle_sys_status(uint8_t current_status) {
+    // notice: only to be called from receive_callback for imu_packet
+    bool FximuNode::handle_sys_status(uint8_t current_sys_status) {
 
-        // sysctl packet: $, type, code, reserved(6), checksum, \n
+        // see if sys status changed
+        if(current_sys_status != prev_sys_status) {
 
-        if(current_status != prev_sys_status) {
+          prev_sys_status = current_sys_status;        // placed top, in case of reset or soft reset.
 
-            RCLCPP_INFO(this->get_logger(), "sys_status has changed to %d", sys_status);
+          // Bit 7: eeprom init error
+          if ((current_sys_status >> 7) & 1) { // Check if bit 7 is set
+            RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 7 (0x80): EEPROM Initialization Error");
+          }
 
-            if((current_status & 0b01000000) == 64) {
+          // Bit 6: hard restart required
+          if ((current_sys_status >> 6) & 1) { // Check if bit 6 is set
 
-                // send reset if bit6 is set, usb connection will crash, so lifecycle node has to respawn
-                // for old node to shutdown properly takes ~20 seconds
+            RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 6 (0x40): Hard Restart Required");
 
-                RCLCPP_INFO(this->get_logger(), "sending reset command to IMU device");
-                RCLCPP_INFO(this->get_logger(), "restarting lifecycle node. will take 20 seconds");
+            // send reset if bit6 is set, usb connection will crash, so lifecycle node has to respawn
+            uint8_t tx_param[PARAM_PACKET_SIZE] = {0};
+            memset(tx_param, 0, PARAM_PACKET_SIZE);
+            tx_param[0] = PACKET_PREFIX;
+            tx_param[1] = PACKET_TYPE_CTL;
+            tx_param[2] = SYSCTL_RESET;
+            tx_param[10] = crc8ccitt(tx_param, 10);
+            tx_param[11] = '\n';
+            std::vector<uint8_t> tx_vector(tx_param, tx_param + PARAM_PACKET_SIZE);
+            m_serial_driver->port()->send(tx_vector);
 
-                uint8_t tx_param[PARAM_PACKET_SIZE] = {0};
-                memset(tx_param, 0, PARAM_PACKET_SIZE);
+            rclcpp::sleep_for(std::chrono::milliseconds(3000));  // sleep for 2s for serial port to ready
 
-                tx_param[0] = PACKET_PREFIX;
-                tx_param[1] = PACKET_TYPE_CTL;
-                tx_param[2] = SYSCTL_RESET;
-                tx_param[10] = crc8ccitt(tx_param, 10);
+            // restart driver
+            this->reset_driver();
 
-                tx_param[11] = '\n';
-
-                std::vector<uint8_t> tx_vector(tx_param, tx_param + PARAM_PACKET_SIZE);
-                m_serial_driver->port()->send(tx_vector);
-                rclcpp::sleep_for(std::chrono::milliseconds(100));
-
-
-            } else if((current_status & 0b00100000) == 32) {
-
-                // send soft reset if bit5 is set
-                RCLCPP_INFO(this->get_logger(), "sending soft reset command to IMU device");
-
-                uint8_t tx_param[PARAM_PACKET_SIZE] = {0};
-                memset(tx_param, 0, PARAM_PACKET_SIZE);
-
-                tx_param[0] = PACKET_PREFIX;
-                tx_param[1] = PACKET_TYPE_CTL;
-                tx_param[2] = SYSCTL_SOFTRESET;
-                tx_param[10] = crc8ccitt(tx_param, 10);
-
-                tx_param[11] = '\n';
-
-                std::vector<uint8_t> tx_vector(tx_param, tx_param + PARAM_PACKET_SIZE);
-                m_serial_driver->port()->send(tx_vector);
-                rclcpp::sleep_for(std::chrono::milliseconds(100));
-
-            }
-
-            prev_sys_status = current_status; // set previous_status
             return true;
-        } else {
-          return false;
+
+          }
+
+          // Bit 5: soft restart required
+          if ((current_sys_status >> 5) & 1) { // Check if bit 5 is set
+
+            RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 5 (0x20): Soft Restart Required");
+
+            // send soft reset if bit5 is set
+            uint8_t tx_param[PARAM_PACKET_SIZE] = {0};
+            memset(tx_param, 0, PARAM_PACKET_SIZE);
+            tx_param[0] = PACKET_PREFIX;
+            tx_param[1] = PACKET_TYPE_CTL;
+            tx_param[2] = SYSCTL_SOFTRESET;
+            tx_param[10] = crc8ccitt(tx_param, 10);
+            tx_param[11] = '\n';
+            std::vector<uint8_t> tx_vector(tx_param, tx_param + PARAM_PACKET_SIZE);
+            m_serial_driver->port()->send(tx_vector);
+            rclcpp::sleep_for(std::chrono::milliseconds(100));
+            return true;
+
+          }
+
+          // Bit 4: eeprom write error
+          if ((current_sys_status >> 4) & 1) { // Check if bit 4 is set
+            RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 4 (0x10): EEPROM Write Error");
+          }
+
+          // Bit 3: ui filter configuration error
+          if ((current_sys_status >> 3) & 1) { // Check if bit 3 is set
+            RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 3 (0x08): UI Filter Configuration Error");
+          }
+
+          // Bit 2: magnetic overflow
+          if ((current_sys_status >> 2) & 1) { // Check if bit 2 is set
+            RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 2 (0x04): Magnetic Overflow");
+          }
+
+          // Bit 1: sensor restarted
+          if ((current_sys_status >> 1) & 1) { // Check if bit 1 is set
+            RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 1 (0x02): Sensor Restarted");
+          }
+
+          // Bit 0: initial calibration failed due to non-steady state
+          if (current_sys_status & 1) { // Check if bit 0 is set (same as (sys_status >> 0) & 1)
+            RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 0 (0x01): Initial Calibration Failed (Non-Steady State)");
+          }
         }
-
+        return false;
     }
 
-    void FximuNode::send_mcu_sync(uint32_t seconds, uint32_t nanos)
+    void FximuNode::mcu_sync(bool send_async)
     {
+        auto mcu_sync_time = get_time();  					  // time marker
+        mcu_sync_time += std::chrono::microseconds(0);          // add a propagation delay
 
-      auto time = get_time();  // time marker
-      time += std::chrono::microseconds(0);             // add a propagation delay
-      std::vector<uint8_t> mcu_sync_packet;                   // mcu sync packet, 12 bytes
-      mcu_sync_packet.push_back('+');                       // mcu sync packet id
-      u32_to_ui8 u;
+        std::vector<uint8_t> mcu_sync_packet;                   // mcu sync packet 12 bytes
+        mcu_sync_packet.push_back('+');                         // mcu sync packet id
 
-      u.u32 = seconds;
-      mcu_sync_packet.push_back(u.ui8[0]);
-      mcu_sync_packet.push_back(u.ui8[1]);
-      mcu_sync_packet.push_back(u.ui8[2]);
-      mcu_sync_packet.push_back(u.ui8[3]);
+        // calculate seconds and nanoseconds
+        uint32_t mcu_sync_seconds = std::chrono::duration_cast<std::chrono::seconds>(mcu_sync_time.time_since_epoch()).count();
+        uint32_t mcu_sync_nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(mcu_sync_time.time_since_epoch() - std::chrono::seconds(mcu_sync_seconds)).count();
 
-      u.u32 = nanos;
-      mcu_sync_packet.push_back(u.ui8[0]);
-      mcu_sync_packet.push_back(u.ui8[1]);
-      mcu_sync_packet.push_back(u.ui8[2]);
-      mcu_sync_packet.push_back(u.ui8[3]);
+        // send seconds
+        u32_to_ui8 u;
+        u.u32 = mcu_sync_seconds;
+        mcu_sync_packet.push_back(u.ui8[0]);
+        mcu_sync_packet.push_back(u.ui8[1]);
+        mcu_sync_packet.push_back(u.ui8[2]);
+        mcu_sync_packet.push_back(u.ui8[3]);
 
-      mcu_sync_packet.push_back(0x0);                       // spare byte
-      mcu_sync_packet.push_back(0x0);                       // spare byte
+        // send nanoseconds
+        u.u32 = mcu_sync_nanos;
+        mcu_sync_packet.push_back(u.ui8[0]);
+        mcu_sync_packet.push_back(u.ui8[1]);
+        mcu_sync_packet.push_back(u.ui8[2]);
+        mcu_sync_packet.push_back(u.ui8[3]);
 
-      mcu_sync_packet.push_back(PACKET_POSTFIX);  // 12-bytes total
+        mcu_sync_packet.push_back(0x0);                         // spare byte
+        mcu_sync_packet.push_back(0x0);                         // spare byte
 
-      m_serial_driver->port()->send(mcu_sync_packet);
+        mcu_sync_packet.push_back(PACKET_POSTFIX);  			  // 12-bytes total
+
+       if(send_async) {
+         m_serial_driver->port()->async_send(mcu_sync_packet);
+       } else {
+         m_serial_driver->port()->send(mcu_sync_packet);
+       }
 
     }
 
-    void FximuNode::send_init_sync()
+    void FximuNode::init_sync()
     {
 
       std::vector<uint8_t> sync_packet;
-      auto time = get_time();
+      auto sync_time = get_time();
       uint32_t host_seconds;
       uint32_t previous_nanos = 0;
 
-      // TODO: trigger this 1ms before second, allowing transmission time, yet, putting the future value inside packet.
-      // TODO: it just needs to be sent a little bit earlier.
       while(true) {
-        time = get_time();
-        host_seconds = std::chrono::duration_cast<std::chrono::seconds>(time.time_since_epoch()).count();
-        uint32_t host_nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(
-          time.time_since_epoch() - std::chrono::seconds(host_seconds)).count();
+        sync_time = get_time();
+        host_seconds = std::chrono::duration_cast<std::chrono::seconds>(sync_time.time_since_epoch()).count();
+        uint32_t host_nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(sync_time.time_since_epoch() - std::chrono::seconds(host_seconds)).count();
         if(host_nanos < previous_nanos) { break; }
         previous_nanos = host_nanos;
       }
@@ -518,51 +579,67 @@ namespace drivers
       sync_packet.push_back(u.ui8[3]);
       sync_packet.push_back(PACKET_POSTFIX);
 
-      // send packet
-      m_serial_driver->port()->send(sync_packet);
+      m_serial_driver->port()->send(sync_packet);				                    // send sync packet
+
+	  RCLCPP_INFO(this->get_logger(), "FXIMU SYNC seconds %u", host_seconds);
     }
 
     void FximuNode::receive_callback(const std::vector<uint8_t> & buffer, const size_t & bytes_transferred)
     {
 
-      const auto received_time = get_time();
-
-      // single epoch calculation with direct uint32_t conversion
-      const auto since_epoch = received_time.time_since_epoch();
-      const uint32_t received_sec = static_cast<uint32_t>(
-          std::chrono::duration_cast<std::chrono::seconds>(since_epoch).count()
-      );
-
-      // nanoseconds with guaranteed range [0, 999,999,999]
-      const uint32_t received_ns = static_cast<uint32_t>(
-          (since_epoch % std::chrono::seconds(1)).count()
-      );
-
-      // final timestamp structure
-      timestamp received_timestamp{
-        std::chrono::seconds{received_sec % 86400},
-        std::chrono::nanoseconds{received_ns}
-      };
-
       if (
-        (bytes_transferred == 64) &
-        (buffer[0] == PACKET_PREFIX) &                                  // prefix check
-        (buffer[IMU_DATA_SIZE - 1] == PACKET_POSTFIX)                   // postfix check
-      ) {   
+        (bytes_transferred == 64) &													// packet size check
+        (buffer[0] == PACKET_PREFIX) &                                  			// prefix check
+        (buffer[IMU_DATA_SIZE - 1] == PACKET_POSTFIX)                   			// postfix check
+      ) {
+
+        const auto received_marker = get_time();									// get packet received time
+        const auto since_epoch = received_marker.time_since_epoch();				// single epoch calculation with direct uint32_t conversion
+
+        const uint32_t received_marker_sec = static_cast<uint32_t>(					// received second
+            std::chrono::duration_cast<std::chrono::seconds>(since_epoch).count()
+        );
+        const uint32_t received_marker_ns = static_cast<uint32_t>(					// received nanoseconds with guaranteed range [0, 999,999,999]
+            (since_epoch % std::chrono::seconds(1)).count()
+        );
+
+        timestamp received_timestamp {												// received  timestamp structure
+          std::chrono::seconds{received_marker_sec},
+          std::chrono::nanoseconds{received_marker_ns}
+        };
 
         // get crc from received packet
-        uint8_t crc8 = buffer[IMU_DATA_SIZE - 2];                        // crc @ 62
-        uint8_t c_crc8 = crc8ccitt(buffer.data(), IMU_DATA_SIZE - 3);
+        uint8_t crc8 = buffer[IMU_DATA_SIZE - 2];                        			// crc @ 62
+        uint8_t c_crc8 = crc8ccitt(buffer.data(), IMU_DATA_SIZE - 3);				// calculated crc
 
         if (crc8 != c_crc8) {
-
-          RCLCPP_ERROR(this->get_logger(), "imu crc8:%d != c_crc8:%d", crc8, c_crc8);
-
+          RCLCPP_ERROR(this->get_logger(), "IMU CRC8:%d not equal c_CRC8:%d", crc8, c_crc8);  // crc error
         } else {
 
-          // as soon as the crc is verified, send mcu sync packet
-          // TODO: send_mcu_sync(received_sec, received_ns);
+          sys_status = buffer[61];
 
+          if(read_state == -1) {
+            RCLCPP_INFO(this->get_logger(), "FXIMU init read_state = -1");
+            prev_packet_seq = buffer[60];								  // record incoming packet sequence number as previous
+            read_state = 0;                                               // set read state to normal
+            handle_sys_status(sys_status);                                // handle sys_status even in first packet
+            return;                                                       // return if first read
+          } else {
+            packet_seq = buffer[60];								      // incoming packet sequence number
+            uint8_t expected_seq = prev_packet_seq + 1;                   // calculate expected sequence number
+            if(packet_seq != expected_seq) {
+              RCLCPP_ERROR(this->get_logger(), "prev_packet_seq: %d, expected_seq: %d, skip: packet_seq: %d", prev_packet_seq, expected_seq, packet_seq);
+              if(read_state == 0) { read_state = 1; } else if(read_state == 1) { read_state = -1; return; }   // reset state if skips for a second time
+            } else {
+              read_state = 0;
+            }
+            prev_packet_seq = packet_seq;								  // record sequence number as previous
+            handle_sys_status(sys_status);                                // handle sys_status
+          }
+
+          // notice: we can have read_state 0 or 1 at this point
+
+          // compose imu packet
           auto imu_data = sensor_msgs::msg::Imu(); 
           auto mag_data = sensor_msgs::msg::MagneticField();
 
@@ -571,111 +648,110 @@ namespace drivers
           imu_data.orientation.y = R4(buffer, 1 + 8);                     // q2
           imu_data.orientation.z = R4(buffer, 1 + 12);                    // q3
 
-          imu_data.linear_acceleration.x = R4(buffer, 17);
-          imu_data.linear_acceleration.y = R4(buffer, 17 + 4);
-          imu_data.linear_acceleration.z = R4(buffer, 17 + 8);
+          imu_data.linear_acceleration.x = R4(buffer, 17);				  // ax
+          imu_data.linear_acceleration.y = R4(buffer, 17 + 4);            // ay
+          imu_data.linear_acceleration.z = R4(buffer, 17 + 8);			  // az
 
-          imu_data.angular_velocity.x = R4(buffer, 29);
-          imu_data.angular_velocity.y = R4(buffer, 29 + 4);
-          imu_data.angular_velocity.z = R4(buffer, 29 + 8);
+          imu_data.angular_velocity.x = R4(buffer, 29);					  // wx
+          imu_data.angular_velocity.y = R4(buffer, 29 + 4);				  // wy
+          imu_data.angular_velocity.z = R4(buffer, 29 + 8);				  // wz
 
-          mag_data.magnetic_field.x = R4(buffer, 41);
-          mag_data.magnetic_field.y = R4(buffer, 41 + 4);
-          mag_data.magnetic_field.z = R4(buffer, 41 + 8);
+          mag_data.magnetic_field.x = R4(buffer, 41);					  // mx
+          mag_data.magnetic_field.y = R4(buffer, 41 + 4);				  // my
+          mag_data.magnetic_field.z = R4(buffer, 41 + 8);			      // mz
 
-          // TIMING values coming from DEVICE
-          uint32_t device_rtc_timestamp = U4(buffer, 53);
+          uint32_t device_rtc_seconds = U4(buffer, 53);					  // RTC seconds
+          uint16_t device_rtc_ticks = U2(buffer, 57);			          // RTC ticks
+          int8_t rtc_offset = (int8_t) buffer[59];                        // RTC sync offset
 
-          // the lsb 17 bits are posix second of day
-          uint32_t device_rtc_second_of_day = device_rtc_timestamp & 0x0001FFFF;
-
-          // the msb 15 bits are rtc ticks
-          uint16_t device_rtc_ticks = (uint16_t) ((device_rtc_timestamp >> 17) & 0x7FFF);
+          if(rtc_offset == 127) { rtc_offset = 125; } else if(rtc_offset == 126) { rtc_offset = -125; }
+          filter_rtc_offset->update(rtc_offset);                          // uncompress and filter rtc_offset
 
           // calculate nanos
           uint32_t device_rtc_nanos = device_rtc_ticks * 30517.578125;
 
           // device timestamp structure
-          timestamp device_timestamp{
-            std::chrono::seconds{device_rtc_second_of_day},
-            std::chrono::nanoseconds{device_rtc_nanos}
-          };
+          timestamp device_timestamp {std::chrono::seconds{device_rtc_seconds}, std::chrono::nanoseconds{device_rtc_nanos}};
 
+          // calculate nanos diff
           const auto received_point = received_timestamp.first + received_timestamp.second;
           const auto device_point = device_timestamp.first + device_timestamp.second;
-
           const int32_t nanos_diff = (received_point - device_point).count();
-
           filter_timing->update(nanos_diff);
-          bool norm = filter_timing->normal(nanos_diff);
 
-          // monotonicity check
-          timestamp prev_device_timestamp{seconds{prev_device_posix_time}, nanoseconds{prev_device_nanos}};
-          if (device_timestamp.first > prev_device_timestamp.first) {
-            read_state = STATUS_OK;        // definitively later, since device seconds larger than prev_device_tmiestamp
-          } else if (device_timestamp.first < prev_device_timestamp.first) {
-            read_state = STATUS_SKIP_SECOND; // definitive skip, since seconds smaller than prev_device_timestamp
+          // stamp for imu packet
+          // rclcpp::Time stamp = rclcpp::Clock().now();
+          // rclcpp::Time stamp = rclcpp::Time(device_rtc_seconds) + rclcpp::Duration(0, device_rtc_nanos);
+          rclcpp::Time stamp(static_cast<uint64_t>((device_rtc_seconds * 1e9) + device_rtc_nanos));
+          imu_data.header.stamp = stamp;
+          imu_data.header.frame_id = imu_frame_id;
+
+          // process magneto only if enabled and publishing
+          if(enable_magneto && publish_magneto) {
+             mag_data.header.stamp = imu_data.header.stamp; // mag timestamp
+             mag_data.header.frame_id = mag_frame_id;       // mag frameid
+             imu_publisher->publish(imu_data);              // publish imu data
+             mag_publisher->publish(mag_data);              // publish mag data
           } else {
-            if (device_timestamp.second >= prev_device_timestamp.second) {
-              read_state = STATUS_OK; // TODO: what about >=, cant be equal due to latency
-            } else {
-              read_state = STATUS_SKIP_NANOS;
-            }
+             imu_publisher->publish(imu_data);              // publish imu data only
           }
 
-          prev_device_posix_time = device_rtc_second_of_day;
-          prev_device_nanos = device_rtc_nanos;
+          // handle sys status as last of the chain, increment packet_counter beforehand
+          packet_count++;
 
-          // TODO: when there is timeskip do not publish packet
-
-          // TODO: remove for debugging, right nor RTC time.
-          //if (norm==true && read_state==STATUS_OK)
-          //{
-            RCLCPP_INFO(this->get_logger(), "read_state: %d, recv: %tu, dev: %tu, norm: %d, nanos_diff: %d, avg: %f", read_state, received_point.count(), device_point.count(), norm, nanos_diff, filter_timing->getAverage());
-          //}
-
-
-          bool publish_packet = true;
-
-          /*
-          if (abs(nanos_diff) > 1'000'000'000) {  // >1 second threshold
-            read_state = STATUS_OUT_SYNC;
-            publish_packet = false;
-          } else {
-            read_state = STATUS_OK;
-          }*/
-
-          if(publish_packet) {
-
-              // imu_data.header.stamp = rclcpp::Clock().now();
-              // imu_data.header.stamp = rclcpp::Time(device_posix_time) + rclcpp::Duration(0, device_nanos);
-              //rclcpp::Time stamp(static_cast<uint64_t>((device_posix_time * 1e9) + device_nanos));
-
-              //imu_data.header.stamp = stamp;
-
-              // TODO: fix later
-              imu_data.header.stamp = rclcpp::Clock().now();
-
-              imu_data.header.frame_id = imu_frame_id;
-              mag_data.header.stamp = imu_data.header.stamp;
-              mag_data.header.frame_id = mag_frame_id;
-
-              imu_publisher->publish(imu_data);
-              mag_publisher->publish(mag_data);
-
-          } else {
-            RCLCPP_INFO(this->get_logger(), "Packet not published, read_state: %d", read_state);
+          if(packet_count % 4096 == 0) {
+            RCLCPP_ERROR(this->get_logger(), "avg nanos diff: %f", filter_timing->getAverage());
+            // mcu_sync(true);
           }
+
+          // TODO: if the connection is gone, upon reconnect, will it reinit the hardware? no?
+          // hard reset or softreset reinits the sensor, but connection coming and going back are not.
+          // 1. use mcu sycn packet to signal
+          // 2. use transition of init_sync = false to detect driver reinit.
+          // 3.
+
+
 
         }
+
+      } else if(
+        (bytes_transferred == 64) &
+        (buffer[0] == DIAG_PREFIX) &                                // prefix check
+        (buffer[IMU_DATA_SIZE - 1] == PACKET_POSTFIX)               // postfix check
+	  ) {
+
+        // get crc from received packet
+        uint8_t crc8 = buffer[IMU_DATA_SIZE - 2];                   // crc @ 62
+        uint8_t c_crc8 = crc8ccitt(buffer.data(), IMU_DATA_SIZE - 3);
+
+        if(crc8 != c_crc8) {
+          RCLCPP_ERROR(this->get_logger(), "DIAG CRC8:%d not equal c_CRC8:%d", crc8, c_crc8);
+        } else {
+
+           float ax_bias = R4(buffer, 1);                           // ax_bias
+           float ay_bias = R4(buffer, 5);                           // ay_bias
+           float az_bias = R4(buffer, 9);                           // az_bias
+
+           float wx_bias = R4(buffer, 13);                          // wx_bias
+           float wy_bias = R4(buffer, 17);                          // wy_bias
+           float wz_bias = R4(buffer, 21);                          // wz_bias
+
+           float mag_temp = R4(buffer, 45);
+		   float sensor_temp = R4(buffer, 49);
+
+           // TIMING values coming from DEVICE RTC
+           // uint32_t device_rtc_seconds = U4(buffer, 53);			              // RTC seconds
+           // uint16_t device_rtc_sub_seconds = U2(buffer, 57);		              // RTC subseconds
+           // uint32_t device_rtc_nanos = device_rtc_sub_seconds * 30517.578125;  // RTC nanosseconds
+
+           RCLCPP_INFO(this->get_logger(), "ax: %.4f, ay: %.4f, az: %.4f, wx: %.4f, wy: %.4f, wz: %.4f, mt: %.1fC, st: %.1fC", ax_bias, ay_bias, az_bias, wx_bias, wy_bias, wz_bias, mag_temp, sensor_temp);
+		   // RCLCPP_INFO(this->get_logger(), "device_rtc_seconds: %u, device_rtc_sub_seconds: %u, device_rtc_nanos: %u", device_rtc_seconds, device_rtc_sub_seconds, device_rtc_nanos);
+
+	     }
       }
-    }
-
-
-
-  } // CLASS END
-
-}
+	} // end receive_callback
+  } // namespace fximu_driver
+} // namespace drivers
 
 #include <rclcpp_components/register_node_macro.hpp>  // NOLINT
 RCLCPP_COMPONENTS_REGISTER_NODE(drivers::fximu_driver::FximuNode)

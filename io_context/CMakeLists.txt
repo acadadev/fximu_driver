@@ -56,5 +56,6 @@ endif()
 target_compile_options(${PROJECT_NAME} PUBLIC "-O0" PRIVATE -Wall)
 
 ament_auto_package(
+  USE_SCOPED_HEADER_INSTALL_DIR
   CONFIG_EXTRAS_POST "io_context-extras.cmake"
 )

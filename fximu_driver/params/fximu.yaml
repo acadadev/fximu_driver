@@ -28,7 +28,6 @@
 
     magOdr: 0x4                               # 100hz
     magAvg: 0x2                               # 4
-
                                               # uint16 section
     timer0Sec: 4                              # timer0 seconds TODO: document
     timer1Sec: 5                              # initial calibration seconds
@@ -63,9 +62,9 @@
     enableAdaptiveBias: true                  # enable device adaptive bias
     enableAdaptiveGain: true                  # enable device acceletometer adaptive gain
 
-    enableMagnetometer: false                  # enable magnetometer device
+    enableMagnetometer: true                 # enable magnetometer device
     useMagnetometerData: false                # use magnetometer data for correcting orientation
-    pubMagnetometerData: false                 # publish magnetometer data
+    pubMagnetometerData: false                # publish magnetometer data
 
     imu_frame_id: imu_link                    # link name for imu message
     mag_frame_id: imu_link                    # link name for mag sensor message
