@@ -31,7 +31,7 @@ public:
     void update(int32_t nanos_diff) {
 
         filter_sample_count++;           // filter sample count
-        period_sample_count++;    // update Welford's algorithm variables for running variance
+        period_sample_count++;           // update Welford's algorithm variables for running variance
         double delta = nanos_diff - getAverage();
         period_M2 += delta * delta;
 
