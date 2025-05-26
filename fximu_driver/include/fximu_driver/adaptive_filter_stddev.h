@@ -55,13 +55,8 @@ public:
         if (period_sample_count > 1) {
             std_dev = std::sqrt(period_M2 / period_sample_count);
         }
-        period_M2 = 0.0;
-        period_sample_count = 0;
-        // TODO: testing
-        //avg_nanos_diff = 0;
-        //filter_sample_count = 0;
-        //warmed_up = false;
-        // TODO: not the best way
+        //period_M2 = 0.0;
+        //period_sample_count = 0;
         return std_dev;
     }
 
