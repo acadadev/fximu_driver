@@ -25,7 +25,6 @@ namespace drivers
       get_serial_parameters();                   // get serial parameters for connection
       declare_parameters();                      // get device parameters with default from yaml file
       filter_timing = new AdaptiveFilter();      // timing filter for imu packet delay
-      filter_rtc_offset = new AdaptiveFilter();  // filter for rtc offset
     }
 
     FximuNode::FximuNode(const rclcpp::NodeOptions & options, const IoContext & ctx)
@@ -34,7 +33,6 @@ namespace drivers
       get_serial_parameters();                   // get serial parameters for connection
       declare_parameters();                      // get device parameters with default from yaml file
       filter_timing = new AdaptiveFilter();      // timing filter for imu packet delay
-      filter_rtc_offset = new AdaptiveFilter();  // filter for rtc offset
     }
 
     FximuNode::~FximuNode() {
@@ -664,8 +662,7 @@ namespace drivers
           uint16_t device_rtc_ticks = U2(buffer, 57);			          // RTC ticks
           int8_t rtc_offset = (int8_t) buffer[59];                        // RTC sync offset
 
-          if(rtc_offset == 127) { rtc_offset = 125; } else if(rtc_offset == 126) { rtc_offset = -125; }
-          filter_rtc_offset->update(rtc_offset);                          // uncompress and filter rtc_offset
+          // TODO: if(rtc_offset == 127) { rtc_offset = 125; } else if(rtc_offset == 126) { rtc_offset = -125; }
 
           // calculate nanos
           uint32_t device_rtc_nanos = device_rtc_ticks * 30517.578125;
@@ -699,20 +696,14 @@ namespace drivers
           // handle sys status as last of the chain, increment packet_counter beforehand
           packet_count++;
 
-          if(packet_count % 1024 == 0) {
-            RCLCPP_ERROR(this->get_logger(), "avg: %f std.dev %f",
+          if(packet_count % 256 == 0) {
+            RCLCPP_ERROR(this->get_logger(), "avg: %f std.dev %f rtc_offset %d nanos_diff %d",
                          filter_timing->getAverage(),
-                         filter_timing->getStdDev());
-            // mcu_sync(true);
+                         filter_timing->getStdDev(),
+						 rtc_offset,
+                         nanos_diff);
+            mcu_sync(false);
           }
-
-          // TODO: if the connection is gone, upon reconnect, will it reinit the hardware? no?
-          // hard reset or softreset reinits the sensor, but connection coming and going back are not.
-          // 1. use mcu sycn packet to signal
-          // 2. use transition of init_sync = false to detect driver reinit.
-          // 3.
-
-
 
         }
 

@@ -105,7 +105,6 @@ namespace drivers
         bool publish_magneto = false;         // publish magnetometer data
 
         AdaptiveFilter* filter_timing;
-        AdaptiveFilter* filter_rtc_offset;
 
     };
   }
