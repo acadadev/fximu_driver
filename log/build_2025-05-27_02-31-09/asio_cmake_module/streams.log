@@ -1,0 +1,47 @@
+[0.011s] Invoking command in '/home/can/workspaces/fximu_ws/src/build/asio_cmake_module': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake /home/can/workspaces/fximu_ws/src/asio_cmake_module -DCMAKE_INSTALL_PREFIX=/home/can/workspaces/fximu_ws/src/install/asio_cmake_module
+[0.147s] -- The C compiler identification is GNU 13.3.0
+[0.203s] -- The CXX compiler identification is GNU 13.3.0
+[0.222s] -- Detecting C compiler ABI info
+[0.315s] -- Detecting C compiler ABI info - done
+[0.324s] -- Check for working C compiler: /usr/bin/cc - skipped
+[0.324s] -- Detecting C compile features
+[0.325s] -- Detecting C compile features - done
+[0.335s] -- Detecting CXX compiler ABI info
+[0.435s] -- Detecting CXX compiler ABI info - done
+[0.446s] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[0.446s] -- Detecting CXX compile features
+[0.447s] -- Detecting CXX compile features - done
+[0.458s] -- Found ament_cmake: 2.5.4 (/opt/ros/jazzy/share/ament_cmake/cmake)
+[0.629s] -- Found Python3: /usr/bin/python3 (found version "3.12.3") found components: Interpreter 
+[0.800s] -- Found ament_lint_auto: 0.17.2 (/opt/ros/jazzy/share/ament_lint_auto/cmake)
+[0.958s] -- Added test 'copyright' to check source files copyright and LICENSE
+[0.961s] -- Added test 'lint_cmake' to check CMake code style
+[0.963s] -- Added test 'xmllint' to check XML markup files
+[0.966s] -- Configuring done (0.9s)
+[0.970s] -- Generating done (0.0s)
+[0.971s] -- Build files have been written to: /home/can/workspaces/fximu_ws/src/build/asio_cmake_module
+[0.976s] Invoked command in '/home/can/workspaces/fximu_ws/src/build/asio_cmake_module' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake /home/can/workspaces/fximu_ws/src/asio_cmake_module -DCMAKE_INSTALL_PREFIX=/home/can/workspaces/fximu_ws/src/install/asio_cmake_module
+[0.977s] Invoking command in '/home/can/workspaces/fximu_ws/src/build/asio_cmake_module': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --build /home/can/workspaces/fximu_ws/src/build/asio_cmake_module -- -j12 -l12
+[1.019s] Invoked command in '/home/can/workspaces/fximu_ws/src/build/asio_cmake_module' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --build /home/can/workspaces/fximu_ws/src/build/asio_cmake_module -- -j12 -l12
+[1.031s] Invoking command in '/home/can/workspaces/fximu_ws/src/build/asio_cmake_module': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --install /home/can/workspaces/fximu_ws/src/build/asio_cmake_module
+[1.040s] -- Install configuration: ""
+[1.040s] -- Installing: /home/can/workspaces/fximu_ws/src/install/asio_cmake_module/share/ament_index/resource_index/package_run_dependencies/asio_cmake_module
+[1.041s] -- Installing: /home/can/workspaces/fximu_ws/src/install/asio_cmake_module/share/ament_index/resource_index/parent_prefix_path/asio_cmake_module
+[1.041s] -- Installing: /home/can/workspaces/fximu_ws/src/install/asio_cmake_module/share/asio_cmake_module/environment/ament_prefix_path.sh
+[1.041s] -- Installing: /home/can/workspaces/fximu_ws/src/install/asio_cmake_module/share/asio_cmake_module/environment/ament_prefix_path.dsv
+[1.041s] -- Installing: /home/can/workspaces/fximu_ws/src/install/asio_cmake_module/share/asio_cmake_module/environment/path.sh
+[1.041s] -- Installing: /home/can/workspaces/fximu_ws/src/install/asio_cmake_module/share/asio_cmake_module/environment/path.dsv
+[1.042s] -- Installing: /home/can/workspaces/fximu_ws/src/install/asio_cmake_module/share/asio_cmake_module/local_setup.bash
+[1.042s] -- Installing: /home/can/workspaces/fximu_ws/src/install/asio_cmake_module/share/asio_cmake_module/local_setup.sh
+[1.042s] -- Installing: /home/can/workspaces/fximu_ws/src/install/asio_cmake_module/share/asio_cmake_module/local_setup.zsh
+[1.042s] -- Installing: /home/can/workspaces/fximu_ws/src/install/asio_cmake_module/share/asio_cmake_module/local_setup.dsv
+[1.042s] -- Installing: /home/can/workspaces/fximu_ws/src/install/asio_cmake_module/share/asio_cmake_module/package.dsv
+[1.042s] -- Installing: /home/can/workspaces/fximu_ws/src/install/asio_cmake_module/share/ament_index/resource_index/packages/asio_cmake_module
+[1.043s] -- Installing: /home/can/workspaces/fximu_ws/src/install/asio_cmake_module/share/asio_cmake_module/cmake/asio_cmake_module-extras.cmake
+[1.043s] -- Installing: /home/can/workspaces/fximu_ws/src/install/asio_cmake_module/share/asio_cmake_module/cmake/asio_cmake_moduleConfig.cmake
+[1.043s] -- Installing: /home/can/workspaces/fximu_ws/src/install/asio_cmake_module/share/asio_cmake_module/cmake/asio_cmake_moduleConfig-version.cmake
+[1.043s] -- Installing: /home/can/workspaces/fximu_ws/src/install/asio_cmake_module/share/asio_cmake_module/package.xml
+[1.043s] -- Up-to-date: /home/can/workspaces/fximu_ws/src/install/asio_cmake_module/share/asio_cmake_module/cmake
+[1.043s] -- Installing: /home/can/workspaces/fximu_ws/src/install/asio_cmake_module/share/asio_cmake_module/cmake/Modules
+[1.043s] -- Installing: /home/can/workspaces/fximu_ws/src/install/asio_cmake_module/share/asio_cmake_module/cmake/Modules/FindASIO.cmake
+[1.047s] Invoked command in '/home/can/workspaces/fximu_ws/src/build/asio_cmake_module' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --install /home/can/workspaces/fximu_ws/src/build/asio_cmake_module
