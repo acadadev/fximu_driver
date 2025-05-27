@@ -675,36 +675,41 @@ namespace drivers
           const auto device_point = device_timestamp.first + device_timestamp.second;
           const int32_t nanos_diff = (received_point - device_point).count();
 
+	      // TODO: set hard limit of 0.5 seconds for reset request.
 		  // TODO: cricitcal. we need to compare to previous nanos_diff to see a large jump has happened
+
 		  if(abs(nanos_diff) > 900000000) {
+
 		  	RCLCPP_INFO(this->get_logger(), "nanos_diff %d rtc %d.%d host %d.%d",
 				nanos_diff,
 				device_rtc_seconds,
 				device_rtc_ticks,
 				received_marker_sec,
 				received_marker_ns);
+
 		  } else {
+
 			filter_timing->update(nanos_diff);
+
+          	// stamp for imu packet
+          	// rclcpp::Time stamp = rclcpp::Clock().now();
+          	// rclcpp::Time stamp = rclcpp::Time(device_rtc_seconds) + rclcpp::Duration(0, device_rtc_nanos);
+          	rclcpp::Time stamp(static_cast<uint64_t>((device_rtc_seconds * 1e9) + device_rtc_nanos));
+          	imu_data.header.stamp = stamp;
+          	imu_data.header.frame_id = imu_frame_id;
+
+          	// process magneto only if enabled and publishing
+          	if(enable_magneto && publish_magneto) {
+             	mag_data.header.stamp = imu_data.header.stamp; // mag timestamp
+             	mag_data.header.frame_id = mag_frame_id;       // mag frameid
+             	imu_publisher->publish(imu_data);              // publish imu data
+             	mag_publisher->publish(mag_data);              // publish mag data
+          	} else {
+             	imu_publisher->publish(imu_data);              // publish imu data only
+          	}
+
+		  	//RCLCPP_INFO(this->get_logger(), "nanos_diff %d", nanos_diff);
 		  }
-
-          // stamp for imu packet
-          // rclcpp::Time stamp = rclcpp::Clock().now();
-          // rclcpp::Time stamp = rclcpp::Time(device_rtc_seconds) + rclcpp::Duration(0, device_rtc_nanos);
-          rclcpp::Time stamp(static_cast<uint64_t>((device_rtc_seconds * 1e9) + device_rtc_nanos));
-          imu_data.header.stamp = stamp;
-          imu_data.header.frame_id = imu_frame_id;
-
-          // process magneto only if enabled and publishing
-          if(enable_magneto && publish_magneto) {
-             mag_data.header.stamp = imu_data.header.stamp; // mag timestamp
-             mag_data.header.frame_id = mag_frame_id;       // mag frameid
-             imu_publisher->publish(imu_data);              // publish imu data
-             mag_publisher->publish(mag_data);              // publish mag data
-          } else {
-             imu_publisher->publish(imu_data);              // publish imu data only
-          }
-
-		  //RCLCPP_INFO(this->get_logger(), "mean %f nanos_diff %d", filter_timing->getAverage(), nanos_diff);
 
           packet_count++;
           if(packet_count % 256 == 0) {
