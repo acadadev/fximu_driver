@@ -683,7 +683,7 @@ namespace drivers
 		  // TODO: should be difference from previous nanos_diff
 
 		  if(abs(nanos_diff) > 900000000) {
-		  	RCLCPP_INFO(this->get_logger(), "nanos_diff %d rtc %d.%d host %d.%d",
+		  	RCLCPP_INFO(this->get_logger(), "threshold exceeded - nanos_diff %d rtc %d.%d host %d.%d",
 				nanos_diff,
 				device_rtc_seconds,
 				device_rtc_ticks,
@@ -713,8 +713,13 @@ namespace drivers
           	} else {
              	imu_publisher->publish(imu_data);              // publish imu data only
           	}
-
-		  	//RCLCPP_INFO(this->get_logger(), "nanos_diff %d", nanos_diff);
+			/*
+		  	RCLCPP_INFO(this->get_logger(), "nanos_diff %d rtc %d.%d host %d.%d",
+				nanos_diff,
+				device_rtc_seconds,
+				device_rtc_ticks,
+				received_marker_sec,
+				received_marker_ns);*/
 		  }
 
           packet_count++;
