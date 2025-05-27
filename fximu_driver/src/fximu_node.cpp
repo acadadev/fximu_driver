@@ -678,14 +678,20 @@ namespace drivers
 	      // TODO: set hard limit of 0.5 seconds for reset request.
 		  // TODO: cricitcal. we need to compare to previous nanos_diff to see a large jump has happened
 
-		  if(abs(nanos_diff) > 900000000) {
+	      // this is not acceptable as it happens each 64 seconds.
 
+		  // TODO: should be difference from previous nanos_diff
+
+		  if(abs(nanos_diff) > 900000000) {
 		  	RCLCPP_INFO(this->get_logger(), "nanos_diff %d rtc %d.%d host %d.%d",
 				nanos_diff,
 				device_rtc_seconds,
 				device_rtc_ticks,
 				received_marker_sec,
 				received_marker_ns);
+
+			// TODO: request reset
+			// this->reset_driver();
 
 		  } else {
 
