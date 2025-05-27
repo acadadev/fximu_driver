@@ -10,7 +10,7 @@
 #define STATUS_OUT_SYNC 0x06
 
 #include "fximu_driver/fximu_driver.hpp"
-#include "fximu_driver/adaptive_filter_stddev.h"
+#include "fximu_driver/adaptive_filter_period.h"
 
 #include <memory>
 #include <string>

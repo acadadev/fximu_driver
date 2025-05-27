@@ -697,8 +697,9 @@ namespace drivers
           packet_count++;
 
           if(packet_count % 256 == 0) {
+		    double period_mean = filter_timing->getAverage();
             RCLCPP_ERROR(this->get_logger(), "avg: %f std.dev %f rtc_offset %d nanos_diff %d",
-                         filter_timing->getAverage(),
+                         period_mean,
                          filter_timing->getStdDev(),
 						 rtc_offset,
                          nanos_diff);
