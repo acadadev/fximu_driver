@@ -676,6 +676,14 @@ namespace drivers
           const int32_t nanos_diff = (received_point - device_point).count();
           filter_timing->update(nanos_diff);
 
+		  /*
+		  RCLCPP_INFO(this->get_logger(), "nanos_diff %d rtc %d.%d host %d.%d",
+				nanos_diff,
+				device_rtc_seconds,
+				device_rtc_ticks,
+				received_marker_sec,
+				received_marker_ns);*/
+
           // stamp for imu packet
           // rclcpp::Time stamp = rclcpp::Clock().now();
           // rclcpp::Time stamp = rclcpp::Time(device_rtc_seconds) + rclcpp::Duration(0, device_rtc_nanos);
@@ -693,16 +701,15 @@ namespace drivers
              imu_publisher->publish(imu_data);              // publish imu data only
           }
 
-          // handle sys status as last of the chain, increment packet_counter beforehand
-          packet_count++;
+		  // RCLCPP_INFO(this->get_logger(), "mean %f nanos_diff %d", filter_timing->getAverage(), nanos_diff);
 
+          packet_count++;
           if(packet_count % 256 == 0) {
 		    double period_mean = filter_timing->getAverage();
-            RCLCPP_ERROR(this->get_logger(), "avg: %f std.dev %f rtc_offset %d nanos_diff %d",
+            RCLCPP_ERROR(this->get_logger(), "avg %f std_dev %f rtc_offset %d",
                          period_mean,
                          filter_timing->getStdDev(),
-						 rtc_offset,
-                         nanos_diff);
+						 rtc_offset);
             mcu_sync(false);
           }
 
