@@ -701,7 +701,7 @@ namespace drivers
              imu_publisher->publish(imu_data);              // publish imu data only
           }
 
-		  // RCLCPP_INFO(this->get_logger(), "mean %f nanos_diff %d", filter_timing->getAverage(), nanos_diff);
+		  //RCLCPP_INFO(this->get_logger(), "mean %f nanos_diff %d", filter_timing->getAverage(), nanos_diff);
 
           packet_count++;
           if(packet_count % 256 == 0) {
