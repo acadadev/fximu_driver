@@ -674,15 +674,18 @@ namespace drivers
           const auto received_point = received_timestamp.first + received_timestamp.second;
           const auto device_point = device_timestamp.first + device_timestamp.second;
           const int32_t nanos_diff = (received_point - device_point).count();
-          filter_timing->update(nanos_diff);
 
-		  /*
-		  RCLCPP_INFO(this->get_logger(), "nanos_diff %d rtc %d.%d host %d.%d",
+		  // TODO: cricitcal. we need to compare to previous nanos_diff to see a large jump has happened
+		  if(abs(nanos_diff) > 900000000) {
+		  	RCLCPP_INFO(this->get_logger(), "nanos_diff %d rtc %d.%d host %d.%d",
 				nanos_diff,
 				device_rtc_seconds,
 				device_rtc_ticks,
 				received_marker_sec,
-				received_marker_ns);*/
+				received_marker_ns);
+		  } else {
+			filter_timing->update(nanos_diff);
+		  }
 
           // stamp for imu packet
           // rclcpp::Time stamp = rclcpp::Clock().now();
