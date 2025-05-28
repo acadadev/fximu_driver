@@ -707,6 +707,8 @@ namespace drivers
             sync_packet[11] = i.ui8[2];
             sync_packet[12] = i.ui8[3];
 
+            // TODO: test init sync with a led
+
             auto t1_time = get_time();  					  // time marker
             // t1_time += std::chrono::microseconds(0);       // add a propagation delay // TODO: remove from ALL
 
