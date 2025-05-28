@@ -1,24 +1,26 @@
 #ifndef PARAMETERS_H_
 #define	PARAMETERS_H_
 
-#define IMU_DATA_SIZE 64
-#define PARAM_PACKET_SIZE 12
-#define SYNC_PACKET_SIZE 6
-
-#define PACKET_TYPE_CTL 0x03
-#define PACKET_TYPE_PARAM 0x04
-
 #define PARAM_TYPE_UINT8 0                        // unsigned int8 parameter
 #define PARAM_TYPE_UINT16 1                       // unsigned int16 parameter
 #define PARAM_TYPE_INT16 2                        // signed int16 parameter
 #define PARAM_TYPE_FLOAT 3                        // float parameter
 #define PARAM_TYPE_BOOL 4                         // boolean parameter
 
-#define PACKET_PREFIX '$'                         // imu packet identifier
+#define PARAMETER_PREFIX 'P'                      // parameter packet identifier
+#define DATA_PREFIX '$'                           // imu packet identifier
 #define DIAG_PREFIX 'D'                           // diag packet identifier
 #define CALIBRATION_PREFIX 'C'                    // calibration packet identifier
-#define CALIBRATION_RAW_PREFIX 'R'                // calibration packet identifier
+#define RAW_PREFIX 'R'                            // raw packet identifier
+#define SYNC_PREFIX '+'                           // sync packet
+#define INIT_PREFIX '>'                           // initial sync packet
 #define PACKET_POSTFIX '\n'                       // last byte of any packet
+
+#define SYNC_PACKET_SIZE 6                        // packet size for initial sync packet
+#define USB_PACKET_SIZE 64                        // all the rest of the packets are 64 bytes
+
+#define PACKET_TYPE_SYSCTL 0x03                   // sysctl packet
+#define PACKET_TYPE_PARAM 0x04                    // parameter packet
 
 #define SYSCTL_RESET 0x01
 #define SYSCTL_SOFTRESET 0x02

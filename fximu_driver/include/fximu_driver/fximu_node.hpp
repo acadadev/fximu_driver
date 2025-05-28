@@ -11,6 +11,7 @@
 
 #include "fximu_driver/fximu_driver.hpp"
 #include "fximu_driver/adaptive_filter_period.h"
+#include "fximu_driver/adaptive_filter_rtt.h"
 
 #include <memory>
 #include <string>
@@ -89,7 +90,6 @@ namespace drivers
         void send_parameters();
         bool handle_sys_status(uint8_t current_status);
         void init_sync();
-        void mcu_sync(bool send_async);
 
         int8_t read_state = -1;               // serial read state
 
@@ -107,9 +107,13 @@ namespace drivers
         bool enable_magneto = false;          // enable magnetometer
         bool publish_magneto = false;         // publish magnetometer data
 
+		std::vector<uint8_t> init_packet;     // init packet 6 bytes
+        std::vector<uint8_t> sync_packet;     // sync packet 64 bytes
+        std::vector<uint8_t> param_packet;    // parameter packet 64 bytes
+        std::vector<uint8_t> imu_packet;      // imu packet 64 bytes
+
         AdaptiveFilter* filter_timing;
-		AdaptiveFilter* filter_rtt;
-		AdaptiveFilter* filter_offset;
+		AdaptiveFilterRTT* filter_rtt;
 
     };
   }

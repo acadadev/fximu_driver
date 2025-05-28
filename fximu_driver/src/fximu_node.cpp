@@ -25,8 +25,13 @@ namespace drivers
       get_serial_parameters();                   // get serial parameters for connection
       declare_parameters();                      // get device parameters with default from yaml file
       filter_timing = new AdaptiveFilter();      // timing filter for imu packet delay
-	  filter_rtt = new AdaptiveFilter();         // ntp round trip time filter
-      filter_offset = new AdaptiveFilter();      // ntp offset filter
+	  filter_rtt = new AdaptiveFilterRTT();      // ntp round trip time filter
+
+      init_packet.assign(6, 0);                  // initial sync packet
+      sync_packet.assign(64, 0);                 // ntp sync packet
+      param_packet.assign(64, 0);                // parameter packet
+      imu_packet.assign(64, 0);                  // imu_packet
+
     }
 
     FximuNode::FximuNode(const rclcpp::NodeOptions & options, const IoContext & ctx)
@@ -35,8 +40,13 @@ namespace drivers
       get_serial_parameters();                   // get serial parameters for connection
       declare_parameters();                      // get device parameters with default from yaml file
       filter_timing = new AdaptiveFilter();      // timing filter for imu packet delay
-	  filter_rtt = new AdaptiveFilter();         // ntp round trip time filter
-      filter_offset = new AdaptiveFilter();      // ntp offset filter
+	  filter_rtt = new AdaptiveFilterRTT();      // ntp round trip time filter
+
+      init_packet.assign(6, 0);                  // initial sync packet
+      sync_packet.assign(64, 0);                 // ntp sync packet
+      param_packet.assign(64, 0);                // parameter packet
+      imu_packet.assign(64, 0);                  // imu_packet
+
     }
 
     FximuNode::~FximuNode() {
@@ -48,6 +58,16 @@ namespace drivers
     LNI::CallbackReturn FximuNode::on_configure(const lc::State & state) {
 
       (void)state;
+
+      init_packet[0] = INIT_PREFIX;                  // initial sync packet
+      sync_packet[0] = SYNC_PREFIX;                  // sync packet
+      param_packet[0] = PARAMETER_PREFIX;            // parameter packet
+      imu_packet[0] = DATA_PREFIX;                   // imu packet
+
+      init_packet[SYNC_PACKET_SIZE - 1] = PACKET_POSTFIX;
+      sync_packet[USB_PACKET_SIZE - 1] = PACKET_POSTFIX;
+      param_packet[USB_PACKET_SIZE - 1] = PACKET_POSTFIX;
+      imu_packet[USB_PACKET_SIZE - 1] = PACKET_POSTFIX;
 
       // create publishers, must be done after declaring parameters
       imu_publisher = this->create_publisher<sensor_msgs::msg::Imu>("/imu/data", rclcpp::QoS{100});
@@ -327,104 +347,96 @@ namespace drivers
 
         // parameter packet: $, type, subtype, index, reserved(1), payload(4), reserved(1), checksum, \n
 
-        uint8_t tx_param[PARAM_PACKET_SIZE] = {0};
-
         // handle uint8
-        memset(tx_param, 0, PARAM_PACKET_SIZE);
-        tx_param[0] = PACKET_PREFIX;
-        tx_param[1] = PACKET_TYPE_PARAM;
-        tx_param[2] = PARAM_TYPE_UINT8;
-        tx_param[11] = '\n';
+        param_packet.assign(USB_PACKET_SIZE, 0);
+        param_packet[0] = PARAMETER_PREFIX;
+        param_packet[1] = PACKET_TYPE_PARAM;
+        param_packet[2] = PARAM_TYPE_UINT8;
 
         uint8_t temp_uint8;
         for(uint8_t i=0; i < SIZE_PARAMS_UINT8; i++) {
-          tx_param[3] = i;
+          param_packet[3] = i;
           temp_uint8 = get_parameter(names_uint8[i]).as_int();
-          tx_param[5] = temp_uint8;
-          tx_param[10] = crc8ccitt(tx_param, 10);
-          std::vector<uint8_t> tx_vector(tx_param, tx_param + PARAM_PACKET_SIZE);
-          m_serial_driver->port()->send(tx_vector);
+          param_packet[5] = temp_uint8;
+          param_packet[62] = crc8(param_packet, 10);
+          m_serial_driver->port()->send(param_packet);
           RCLCPP_DEBUG(this->get_logger(), "%s: %u", names_uint8[i], temp_uint8);
           rclcpp::sleep_for(std::chrono::milliseconds(10));
         }
 
         // handle uint16
-        memset(tx_param, 0, PARAM_PACKET_SIZE);
-        tx_param[0] = PACKET_PREFIX;
-        tx_param[1] = PACKET_TYPE_PARAM;
-        tx_param[2] = PARAM_TYPE_UINT16;
-        tx_param[11] = '\n';
+        param_packet.assign(USB_PACKET_SIZE, 0);
+        param_packet[0] = PARAMETER_PREFIX;
+        param_packet[1] = PACKET_TYPE_PARAM;
+        param_packet[2] = PARAM_TYPE_UINT16;
+        param_packet[USB_PACKET_SIZE - 1] = PACKET_POSTFIX;
 
         uint16_t temp_uint16;
         for(uint8_t i=0; i < SIZE_PARAMS_UINT16; i++) {
-          tx_param[3] = i;
+          param_packet[3] = i;
           temp_uint16 = get_parameter(names_uint16[i]).as_int();
-          tx_param[5] = temp_uint16 & 0xFF;
-          tx_param[6] = temp_uint16 >> 8;
-          tx_param[10] = crc8ccitt(tx_param, 10);
-          std::vector<uint8_t> tx_vector(tx_param, tx_param + PARAM_PACKET_SIZE);
-          m_serial_driver->port()->send(tx_vector);
+          param_packet[5] = temp_uint16 & 0xFF;
+          param_packet[6] = temp_uint16 >> 8;
+          param_packet[62] = crc8(param_packet, 10);
+          m_serial_driver->port()->send(param_packet);
           RCLCPP_DEBUG(this->get_logger(), "%s: %u", names_uint16[i], temp_uint16);
           rclcpp::sleep_for(std::chrono::milliseconds(10));
         }
 
         // handle int16
-        memset(tx_param, 0, PARAM_PACKET_SIZE);
-        tx_param[0] = PACKET_PREFIX;
-        tx_param[1] = PACKET_TYPE_PARAM;
-        tx_param[2] = PARAM_TYPE_INT16;
-        tx_param[11] = '\n';
+        param_packet.assign(USB_PACKET_SIZE, 0);
+        param_packet[0] = PARAMETER_PREFIX;
+        param_packet[1] = PACKET_TYPE_PARAM;
+        param_packet[2] = PARAM_TYPE_INT16;
+        param_packet[USB_PACKET_SIZE - 1] = PACKET_POSTFIX;
 
         int16_t temp_int16;
         for(uint8_t i=0; i < SIZE_PARAMS_INT16; i++) {
-          tx_param[3] = i;
+          param_packet[3] = i;
           temp_int16 = get_parameter(names_int16[i]).as_int();
-          tx_param[5] = temp_int16 & 0xFF;
-          tx_param[6] = temp_int16 >> 8;
-          tx_param[10] = crc8ccitt(tx_param, 10);
-          std::vector<uint8_t> tx_vector(tx_param, tx_param + PARAM_PACKET_SIZE);
-          m_serial_driver->port()->send(tx_vector);
+          param_packet[5] = temp_int16 & 0xFF;
+          param_packet[6] = temp_int16 >> 8;
+          param_packet[62] = crc8(param_packet, 10);
+          m_serial_driver->port()->send(param_packet);
           RCLCPP_DEBUG(this->get_logger(), "%s: %d", names_int16[i], temp_int16);
           rclcpp::sleep_for(std::chrono::milliseconds(10));
         }
 
         // handle floats
-        memset(tx_param, 0, PARAM_PACKET_SIZE);
-        tx_param[0] = PACKET_PREFIX;
-        tx_param[1] = PACKET_TYPE_PARAM;
-        tx_param[2] = PARAM_TYPE_FLOAT;
-        tx_param[11] = '\n';
+        param_packet.assign(USB_PACKET_SIZE, 0);
+        param_packet[0] = PARAMETER_PREFIX;
+        param_packet[1] = PACKET_TYPE_PARAM;
+        param_packet[2] = PARAM_TYPE_FLOAT;
+        param_packet[USB_PACKET_SIZE - 1] = PACKET_POSTFIX;
 
         f32_to_ui8 u;
         for(uint8_t i=0; i < SIZE_PARAMS_FLOAT; i++) {
-          tx_param[3] = i;
+          param_packet[3] = i;
           u.f32 = (float) get_parameter(names_float[i]).as_double();
-          tx_param[5] = u.ui8[0];
-          tx_param[6] = u.ui8[1];
-          tx_param[7] = u.ui8[2];
-          tx_param[8] = u.ui8[3];
-          tx_param[10] = crc8ccitt(tx_param, 10);
-          std::vector<uint8_t> tx_vector(tx_param, tx_param + PARAM_PACKET_SIZE);
-          m_serial_driver->port()->send(tx_vector);
+          param_packet[5] = u.ui8[0];
+          param_packet[6] = u.ui8[1];
+          param_packet[7] = u.ui8[2];
+          param_packet[8] = u.ui8[3];
+          param_packet[62] = crc8(param_packet, 10);
+          m_serial_driver->port()->send(param_packet);
           RCLCPP_DEBUG(this->get_logger(), "%s: %f", names_float[i], u.f32);
           rclcpp::sleep_for(std::chrono::milliseconds(10));
         }
 
         // handle bools
-        memset(tx_param, 0, PARAM_PACKET_SIZE);
-        tx_param[0] = PACKET_PREFIX;
-        tx_param[1] = PACKET_TYPE_PARAM;
-        tx_param[2] = PARAM_TYPE_BOOL;
-        tx_param[11] = '\n';
+        param_packet.assign(USB_PACKET_SIZE, 0);
+        param_packet[0] = PARAMETER_PREFIX;
+        param_packet[1] = PACKET_TYPE_PARAM;
+        param_packet[2] = PARAM_TYPE_BOOL;
+        param_packet[USB_PACKET_SIZE - 1] = PACKET_POSTFIX;
 
         bool temp_bool;
         for(uint8_t i=0; i < SIZE_PARAMS_BOOL; i++) {
-          tx_param[3] = i;
+          param_packet[3] = i;
           temp_bool = get_parameter(names_bool[i]).as_bool();
-          if(temp_bool) { tx_param[5] = 0x1; } else { tx_param[5] = 0x0; }
-          tx_param[10] = crc8ccitt(tx_param, 10);
-          std::vector<uint8_t> tx_vector(tx_param, tx_param + PARAM_PACKET_SIZE);
-          m_serial_driver->port()->send(tx_vector);
+          if(temp_bool) { param_packet[5] = 0x1; } else { param_packet[5] = 0x0; }
+          param_packet[62] = crc8(param_packet, 10);
+          m_serial_driver->port()->send(param_packet);
           RCLCPP_DEBUG(this->get_logger(), "%s: %u", names_bool[i], temp_bool);
           rclcpp::sleep_for(std::chrono::milliseconds(10));
         }
@@ -449,23 +461,18 @@ namespace drivers
             RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 6 (0x40): Hard Restart Required");
 
             // send reset if bit6 is set, usb connection will crash, so lifecycle node has to respawn
-            uint8_t tx_param[PARAM_PACKET_SIZE] = {0};
-            memset(tx_param, 0, PARAM_PACKET_SIZE);
-            tx_param[0] = PACKET_PREFIX;
-            tx_param[1] = PACKET_TYPE_CTL;
-            tx_param[2] = SYSCTL_RESET;
-            tx_param[10] = crc8ccitt(tx_param, 10);
-            tx_param[11] = '\n';
-            std::vector<uint8_t> tx_vector(tx_param, tx_param + PARAM_PACKET_SIZE);
-            m_serial_driver->port()->send(tx_vector);
+            param_packet.assign(USB_PACKET_SIZE, 0);
+            param_packet[0] = PARAMETER_PREFIX;
+            param_packet[1] = PACKET_TYPE_SYSCTL;
+            param_packet[2] = SYSCTL_RESET;
+            param_packet[62] = crc8(param_packet, 10);
+            param_packet[USB_PACKET_SIZE - 1] = PACKET_POSTFIX;
 
-            rclcpp::sleep_for(std::chrono::milliseconds(3000));  // sleep for 2s for serial port to ready
+            m_serial_driver->port()->send(param_packet);
+            rclcpp::sleep_for(std::chrono::milliseconds(3000));  // sleep for 3s for serial port to ready
 
-            // restart driver
-            this->reset_driver();
-
+            this->reset_driver();                                // restart driver
             return true;
-
           }
 
           // Bit 5: soft restart required
@@ -474,18 +481,16 @@ namespace drivers
             RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 5 (0x20): Sensor Restart Required");
 
             // send soft reset if bit5 is set
-            uint8_t tx_param[PARAM_PACKET_SIZE] = {0};
-            memset(tx_param, 0, PARAM_PACKET_SIZE);
-            tx_param[0] = PACKET_PREFIX;
-            tx_param[1] = PACKET_TYPE_CTL;
-            tx_param[2] = SYSCTL_SOFTRESET;
-            tx_param[10] = crc8ccitt(tx_param, 10);
-            tx_param[11] = '\n';
-            std::vector<uint8_t> tx_vector(tx_param, tx_param + PARAM_PACKET_SIZE);
-            m_serial_driver->port()->send(tx_vector);
+            param_packet.assign(USB_PACKET_SIZE, 0);
+            param_packet[0] = PARAMETER_PREFIX;
+            param_packet[1] = PACKET_TYPE_SYSCTL;
+            param_packet[2] = SYSCTL_SOFTRESET;
+            param_packet[62] = crc8(param_packet, 10);
+            param_packet[USB_PACKET_SIZE - 1] = PACKET_POSTFIX;
+
+            m_serial_driver->port()->send(param_packet);
             rclcpp::sleep_for(std::chrono::milliseconds(100));
             return true;
-
           }
 
           // Bit 4: eeprom write error
@@ -518,50 +523,9 @@ namespace drivers
         return false;
     }
 
-    void FximuNode::mcu_sync(bool send_async)
-    {
-        auto t1_time = get_time();  					  		// time marker
-        t1_time += std::chrono::microseconds(0);          // add a propagation delay
-
-        std::vector<uint8_t> mcu_sync_packet;                   // mcu sync packet 12 bytes
-        mcu_sync_packet.push_back('+');                         // mcu sync packet id
-
-        // calculate seconds and nanoseconds
-        t1_seconds = std::chrono::duration_cast<std::chrono::seconds>(t1_time.time_since_epoch()).count();
-        t1_nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(t1_time.time_since_epoch() - std::chrono::seconds(t1_seconds)).count();
-
-        // sync request seconds
-        u32_to_ui8 u;
-        u.u32 = t1_seconds;
-        mcu_sync_packet.push_back(u.ui8[0]);
-        mcu_sync_packet.push_back(u.ui8[1]);
-        mcu_sync_packet.push_back(u.ui8[2]);
-        mcu_sync_packet.push_back(u.ui8[3]);
-
-        // sync request nanoseconds
-        u.u32 = t1_nanos;
-        mcu_sync_packet.push_back(u.ui8[0]);
-        mcu_sync_packet.push_back(u.ui8[1]);
-        mcu_sync_packet.push_back(u.ui8[2]);
-        mcu_sync_packet.push_back(u.ui8[3]);
-
-        mcu_sync_packet.push_back(0x0);                         // spare byte
-        mcu_sync_packet.push_back(0x0);                         // spare byte
-
-        mcu_sync_packet.push_back(PACKET_POSTFIX);  			  // 12-bytes total
-
-        if(send_async) {
-          m_serial_driver->port()->async_send(mcu_sync_packet);
-        } else {
-          m_serial_driver->port()->send(mcu_sync_packet);
-        }
-
-    }
-
     void FximuNode::init_sync()
     {
 
-      std::vector<uint8_t> sync_packet;
       auto sync_time = get_time();
       uint32_t host_seconds;
       uint32_t previous_nanos = 0;
@@ -576,14 +540,12 @@ namespace drivers
 
       u32_to_ui8 u;
       u.u32 = host_seconds;
-      sync_packet.push_back('>');
-      sync_packet.push_back(u.ui8[0]);
-      sync_packet.push_back(u.ui8[1]);
-      sync_packet.push_back(u.ui8[2]);
-      sync_packet.push_back(u.ui8[3]);
-      sync_packet.push_back(PACKET_POSTFIX);
+      init_packet[1] = u.ui8[0];
+      init_packet[2] = u.ui8[1];
+      init_packet[3] = u.ui8[2];
+      init_packet[4] = u.ui8[3];
 
-      m_serial_driver->port()->send(sync_packet);				                    // send sync packet
+      m_serial_driver->port()->send(init_packet);				                    // always send sync mode
 
 	  RCLCPP_INFO(this->get_logger(), "FXIMU SYNC seconds %u", host_seconds);
     }
@@ -593,8 +555,8 @@ namespace drivers
 
       if (
         (bytes_transferred == 64) &													// packet size check
-        (buffer[0] == PACKET_PREFIX) &                                  			// prefix check
-        (buffer[IMU_DATA_SIZE - 1] == PACKET_POSTFIX)                   			// postfix check
+        (buffer[0] == DATA_PREFIX) &                                  			    // prefix check
+        (buffer[USB_PACKET_SIZE - 1] == PACKET_POSTFIX)                   			// postfix check
       ) {
 
         const auto received_marker = get_time();									// get packet received time
@@ -613,8 +575,8 @@ namespace drivers
         };
 
         // get crc from received packet
-        uint8_t crc8 = buffer[IMU_DATA_SIZE - 2];                        			// crc @ 62
-        uint8_t c_crc8 = crc8ccitt(buffer.data(), IMU_DATA_SIZE - 3);				// calculated crc
+        uint8_t crc8 = buffer[USB_PACKET_SIZE - 2];                        			// crc @ 62
+        uint8_t c_crc8 = crc8ccitt(buffer.data(), USB_PACKET_SIZE - 3);				// calculated crc
 
         if (crc8 != c_crc8) {
           RCLCPP_ERROR(this->get_logger(), "IMU CRC8:%d not equal c_CRC8:%d", crc8, c_crc8);  // crc error
@@ -727,12 +689,47 @@ namespace drivers
           packet_count++;
 		  // TODO: this changes with output frequency.
           if(packet_count % 512 == 0) { // notice: do not use less than 2 seconds
+            /*
 		    double period_mean = filter_timing->getAverage();
             RCLCPP_INFO(this->get_logger(), "avg %f std_dev %f rtc_offset %d",
                          period_mean,
                          filter_timing->getStdDev(),
-						 rtc_offset);
-			mcu_sync(false);
+						 rtc_offset);*/
+
+            // sync request procedure starts here
+            u32_to_ui8 u;
+            i32_to_ui8 i;
+
+            // precalculated offset to gain time
+            i.i32 = (int32_t) filter_rtt->getOffset();
+            sync_packet[9] = i.ui8[0];
+            sync_packet[10] = i.ui8[1];
+            sync_packet[11] = i.ui8[2];
+            sync_packet[12] = i.ui8[3];
+
+            auto t1_time = get_time();  					  // time marker
+            // t1_time += std::chrono::microseconds(0);       // add a propagation delay // TODO: remove from ALL
+
+            // calculate seconds and nanoseconds
+            t1_seconds = std::chrono::duration_cast<std::chrono::seconds>(t1_time.time_since_epoch()).count();
+            t1_nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(t1_time.time_since_epoch() - std::chrono::seconds(t1_seconds)).count();
+
+            // t1 seconds
+            u.u32 = t1_seconds;
+            sync_packet[1] = u.ui8[0];
+            sync_packet[2] = u.ui8[1];
+            sync_packet[3] = u.ui8[2];
+            sync_packet[4] = u.ui8[3];
+
+            // t1 nanos
+            u.u32 = t1_nanos;
+            sync_packet[5] = u.ui8[0];
+            sync_packet[6] = u.ui8[1];
+            sync_packet[7] = u.ui8[2];
+            sync_packet[8] = u.ui8[3];
+
+            m_serial_driver->port()->send(sync_packet);
+
           }
 
         }
@@ -740,7 +737,7 @@ namespace drivers
       } else if(
         (bytes_transferred == 64) &
         (buffer[0] == DIAG_PREFIX) &                                // prefix check
-        (buffer[IMU_DATA_SIZE - 1] == PACKET_POSTFIX)               // postfix check
+        (buffer[USB_PACKET_SIZE - 1] == PACKET_POSTFIX)               // postfix check
 	  ) {
 
         const auto received_marker = get_time();									// get packet received time
@@ -754,8 +751,8 @@ namespace drivers
         );
 
         // get crc from received packet
-        uint8_t crc8 = buffer[IMU_DATA_SIZE - 2];                   // crc @ 62
-        uint8_t c_crc8 = crc8ccitt(buffer.data(), IMU_DATA_SIZE - 3);
+        uint8_t crc8 = buffer[USB_PACKET_SIZE - 2];                   // crc @ 62
+        uint8_t c_crc8 = crc8ccitt(buffer.data(), USB_PACKET_SIZE - 3);
 
         if(crc8 != c_crc8) {
           RCLCPP_ERROR(this->get_logger(), "DIAG CRC8:%d not equal c_CRC8:%d", crc8, c_crc8);
@@ -778,6 +775,8 @@ namespace drivers
 		   uint32_t t3_seconds = U4(buffer, 33);		// T3 seconds
 		   uint32_t t3_nanos = U4(buffer, 37);			// T3 nanos
 
+           int32_t external_offset = I4(buffer, 41);
+
 	       timestamp t1 {std::chrono::seconds(t1_seconds), std::chrono::nanoseconds(t1_nanos)};
            timestamp t2 {std::chrono::seconds{t2_seconds}, std::chrono::nanoseconds{t2_nanos}};
 		   timestamp t3 {std::chrono::seconds{t3_seconds}, std::chrono::nanoseconds{t3_nanos}};
@@ -789,14 +788,16 @@ namespace drivers
            const auto t4_point = t4.first + t4.second;
 
            const int32_t sigma = (t4_point - t1_point).count() - (t3_point - t2_point).count();
-	       const int32_t phi = ((t2_point - t1_point).count() + (t3_point - t4_point).count());
+	       const int32_t phi = ((t2_point - t1_point).count() + (t3_point - t4_point).count()) / 2;
+
+           filter_rtt->update(sigma, phi);
 
 		   // δ = (T4 - T1) - (T3 - T2)
            // θ = [(T2 - T1) + (T3 - T4)] / 2
 
-		   // TODO: oh wait rtt and sigma is not filtered.
+           //RCLCPP_INFO(this->get_logger(), "t1 %lld t2 %lld t3 %lld t4 %lld", t1_point.count(), t2_point.count(), t3_point.count(), t4_point.count());
 
-           RCLCPP_INFO(this->get_logger(), "RTT %d OFFSET %d", sigma, phi);
+           RCLCPP_INFO(this->get_logger(), "RTT %f OFFSET %f external_offset %d", filter_rtt->getRTT(), filter_rtt->getOffset(), external_offset);
 
            // RCLCPP_INFO(this->get_logger(), "ax: %.4f, ay: %.4f, az: %.4f, wx: %.4f, wy: %.4f, wz: %.4f, mt: %.1fC, st: %.1fC", ax_bias, ay_bias, az_bias, wx_bias, wy_bias, wz_bias, mag_temp, sensor_temp);
 		   // RCLCPP_INFO(this->get_logger(), "device_rtc_seconds: %u, device_rtc_sub_seconds: %u, device_rtc_nanos: %u", device_rtc_seconds, device_rtc_sub_seconds, device_rtc_nanos);

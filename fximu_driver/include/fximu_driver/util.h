@@ -23,6 +23,11 @@ typedef union {
     uint8_t ui8[4];
 } f32_to_ui8;
 
+typedef union {
+    int32_t i32;
+    uint8_t ui8[4];
+} i32_to_ui8;
+
 float R4(const std::vector<uint8_t> & buffer, size_t offset = 0) {
   float r;
   const uint8_t *p = &buffer[offset];
@@ -97,6 +102,17 @@ uint8_t crc8ccitt(const void * data, size_t size) {
     uint8_t val = 0;
     uint8_t * pos = (uint8_t *) data;
     uint8_t * end = pos + size;
+    while (pos < end) {
+        val = CRC_TABLE[val ^ *pos];
+        pos++;
+    }
+    return val;
+}
+
+uint8_t crc8(const std::vector<uint8_t> & data, size_t size) {
+    uint8_t val = 0;
+    const uint8_t * pos = data.data();
+    const uint8_t * end = pos + size;
     while (pos < end) {
         val = CRC_TABLE[val ^ *pos];
         pos++;
