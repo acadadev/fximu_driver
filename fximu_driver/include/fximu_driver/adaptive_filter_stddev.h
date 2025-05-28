@@ -6,6 +6,8 @@
 
 class AdaptiveFilter {
 
+	// TODO: turn this into filter for rtt and offset.
+
     private:
 
         const double initial_alpha = 0.3;     // starting learning rate (more aggressive)

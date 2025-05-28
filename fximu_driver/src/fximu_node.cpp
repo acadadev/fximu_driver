@@ -25,6 +25,8 @@ namespace drivers
       get_serial_parameters();                   // get serial parameters for connection
       declare_parameters();                      // get device parameters with default from yaml file
       filter_timing = new AdaptiveFilter();      // timing filter for imu packet delay
+	  filter_rtt = new AdaptiveFilter();         // ntp round trip time filter
+      filter_offset = new AdaptiveFilter();      // ntp offset filter
     }
 
     FximuNode::FximuNode(const rclcpp::NodeOptions & options, const IoContext & ctx)
@@ -33,6 +35,8 @@ namespace drivers
       get_serial_parameters();                   // get serial parameters for connection
       declare_parameters();                      // get device parameters with default from yaml file
       filter_timing = new AdaptiveFilter();      // timing filter for imu packet delay
+	  filter_rtt = new AdaptiveFilter();         // ntp round trip time filter
+      filter_offset = new AdaptiveFilter();      // ntp offset filter
     }
 
     FximuNode::~FximuNode() {
@@ -486,12 +490,14 @@ namespace drivers
 
           // Bit 4: eeprom write error
           if ((current_sys_status >> 4) & 1) { // Check if bit 4 is set
-            RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 4 (0x10): EEPROM Write Error");
+             // RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 4 (0x10): EEPROM Write Error");
+			 RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 4 (0x10): Timer2 Triggered");
           }
 
           // Bit 3: ui filter configuration error
           if ((current_sys_status >> 3) & 1) { // Check if bit 3 is set
-            RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 3 (0x08): UI Filter Configuration Error");
+            // TODO: RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 3 (0x08): UI Filter Configuration Error");
+			RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 3 (0x08): g_rtc_sub_mark fix");
           }
 
           // Bit 2: magnetic overflow
@@ -514,26 +520,26 @@ namespace drivers
 
     void FximuNode::mcu_sync(bool send_async)
     {
-        auto mcu_sync_time = get_time();  					  // time marker
-        mcu_sync_time += std::chrono::microseconds(0);          // add a propagation delay
+        auto t1_time = get_time();  					  		// time marker
+        t1_time += std::chrono::microseconds(0);          // add a propagation delay
 
         std::vector<uint8_t> mcu_sync_packet;                   // mcu sync packet 12 bytes
         mcu_sync_packet.push_back('+');                         // mcu sync packet id
 
         // calculate seconds and nanoseconds
-        uint32_t mcu_sync_seconds = std::chrono::duration_cast<std::chrono::seconds>(mcu_sync_time.time_since_epoch()).count();
-        uint32_t mcu_sync_nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(mcu_sync_time.time_since_epoch() - std::chrono::seconds(mcu_sync_seconds)).count();
+        t1_seconds = std::chrono::duration_cast<std::chrono::seconds>(t1_time.time_since_epoch()).count();
+        t1_nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(t1_time.time_since_epoch() - std::chrono::seconds(t1_seconds)).count();
 
-        // send seconds
+        // sync request seconds
         u32_to_ui8 u;
-        u.u32 = mcu_sync_seconds;
+        u.u32 = t1_seconds;
         mcu_sync_packet.push_back(u.ui8[0]);
         mcu_sync_packet.push_back(u.ui8[1]);
         mcu_sync_packet.push_back(u.ui8[2]);
         mcu_sync_packet.push_back(u.ui8[3]);
 
-        // send nanoseconds
-        u.u32 = mcu_sync_nanos;
+        // sync request nanoseconds
+        u.u32 = t1_nanos;
         mcu_sync_packet.push_back(u.ui8[0]);
         mcu_sync_packet.push_back(u.ui8[1]);
         mcu_sync_packet.push_back(u.ui8[2]);
@@ -544,11 +550,11 @@ namespace drivers
 
         mcu_sync_packet.push_back(PACKET_POSTFIX);  			  // 12-bytes total
 
-       if(send_async) {
-         m_serial_driver->port()->async_send(mcu_sync_packet);
-       } else {
-         m_serial_driver->port()->send(mcu_sync_packet);
-       }
+        if(send_async) {
+          m_serial_driver->port()->async_send(mcu_sync_packet);
+        } else {
+          m_serial_driver->port()->send(mcu_sync_packet);
+        }
 
     }
 
@@ -662,7 +668,8 @@ namespace drivers
           uint16_t device_rtc_ticks = U2(buffer, 57);			          // RTC ticks
           int8_t rtc_offset = (int8_t) buffer[59];                        // RTC sync offset
 
-          // TODO: if(rtc_offset == 127) { rtc_offset = 125; } else if(rtc_offset == 126) { rtc_offset = -125; }
+          // cap rtc_offset, it might be larger than these values.
+		  if(rtc_offset == 127) { rtc_offset = 125; } else if(rtc_offset == 126) { rtc_offset = -125; }
 
           // calculate nanos
           uint32_t device_rtc_nanos = device_rtc_ticks * 30517.578125;
@@ -675,15 +682,10 @@ namespace drivers
           const auto device_point = device_timestamp.first + device_timestamp.second;
           const int32_t nanos_diff = (received_point - device_point).count();
 
-	      // TODO: set hard limit of 0.5 seconds for reset request.
-		  // TODO: cricitcal. we need to compare to previous nanos_diff to see a large jump has happened
-
-	      // this is not acceptable as it happens each 64 seconds.
-
 		  // TODO: should be difference from previous nanos_diff
 
 		  if(abs(nanos_diff) > 900000000) {
-		  	RCLCPP_INFO(this->get_logger(), "threshold exceeded - nanos_diff %d rtc %d.%d host %d.%d",
+		  	RCLCPP_ERROR(this->get_logger(), "threshold exceeded - nanos_diff %d rtc %d.%d host %d.%d",
 				nanos_diff,
 				device_rtc_seconds,
 				device_rtc_ticks,
@@ -723,13 +725,14 @@ namespace drivers
 		  }
 
           packet_count++;
-          if(packet_count % 256 == 0) {
+		  // TODO: this changes with output frequency.
+          if(packet_count % 512 == 0) { // notice: do not use less than 2 seconds
 		    double period_mean = filter_timing->getAverage();
-            RCLCPP_ERROR(this->get_logger(), "avg %f std_dev %f rtc_offset %d",
+            RCLCPP_INFO(this->get_logger(), "avg %f std_dev %f rtc_offset %d",
                          period_mean,
                          filter_timing->getStdDev(),
 						 rtc_offset);
-            mcu_sync(false);
+			mcu_sync(false);
           }
 
         }
@@ -739,6 +742,16 @@ namespace drivers
         (buffer[0] == DIAG_PREFIX) &                                // prefix check
         (buffer[IMU_DATA_SIZE - 1] == PACKET_POSTFIX)               // postfix check
 	  ) {
+
+        const auto received_marker = get_time();									// get packet received time
+        const auto since_epoch = received_marker.time_since_epoch();				// single epoch calculation with direct uint32_t conversion
+
+        const uint32_t received_marker_sec = static_cast<uint32_t>(					// received second
+            std::chrono::duration_cast<std::chrono::seconds>(since_epoch).count()
+        );
+        const uint32_t received_marker_ns = static_cast<uint32_t>(					// received nanoseconds with guaranteed range [0, 999,999,999]
+            (since_epoch % std::chrono::seconds(1)).count()
+        );
 
         // get crc from received packet
         uint8_t crc8 = buffer[IMU_DATA_SIZE - 2];                   // crc @ 62
@@ -759,12 +772,33 @@ namespace drivers
            float mag_temp = R4(buffer, 45);
 		   float sensor_temp = R4(buffer, 49);
 
-           // TIMING values coming from DEVICE RTC
-           // uint32_t device_rtc_seconds = U4(buffer, 53);			              // RTC seconds
-           // uint16_t device_rtc_sub_seconds = U2(buffer, 57);		              // RTC subseconds
-           // uint32_t device_rtc_nanos = device_rtc_sub_seconds * 30517.578125;  // RTC nanosseconds
+		   uint32_t t2_seconds = U4(buffer, 25);		// T2 seconds
+		   uint32_t t2_nanos = U4(buffer, 29);			// T2 nanos
 
-           RCLCPP_INFO(this->get_logger(), "ax: %.4f, ay: %.4f, az: %.4f, wx: %.4f, wy: %.4f, wz: %.4f, mt: %.1fC, st: %.1fC", ax_bias, ay_bias, az_bias, wx_bias, wy_bias, wz_bias, mag_temp, sensor_temp);
+		   uint32_t t3_seconds = U4(buffer, 33);		// T3 seconds
+		   uint32_t t3_nanos = U4(buffer, 37);			// T3 nanos
+
+	       timestamp t1 {std::chrono::seconds(t1_seconds), std::chrono::nanoseconds(t1_nanos)};
+           timestamp t2 {std::chrono::seconds{t2_seconds}, std::chrono::nanoseconds{t2_nanos}};
+		   timestamp t3 {std::chrono::seconds{t3_seconds}, std::chrono::nanoseconds{t3_nanos}};
+           timestamp t4 {std::chrono::seconds{received_marker_sec}, std::chrono::nanoseconds{received_marker_ns}};
+
+           const auto t1_point = t1.first + t1.second;
+           const auto t2_point = t2.first + t2.second;
+           const auto t3_point = t3.first + t3.second;
+           const auto t4_point = t4.first + t4.second;
+
+           const int32_t sigma = (t4_point - t1_point).count() - (t3_point - t2_point).count();
+	       const int32_t phi = ((t2_point - t1_point).count() + (t3_point - t4_point).count());
+
+		   // δ = (T4 - T1) - (T3 - T2)
+           // θ = [(T2 - T1) + (T3 - T4)] / 2
+
+		   // TODO: oh wait rtt and sigma is not filtered.
+
+           RCLCPP_INFO(this->get_logger(), "RTT %d OFFSET %d", sigma, phi);
+
+           // RCLCPP_INFO(this->get_logger(), "ax: %.4f, ay: %.4f, az: %.4f, wx: %.4f, wy: %.4f, wz: %.4f, mt: %.1fC, st: %.1fC", ax_bias, ay_bias, az_bias, wx_bias, wy_bias, wz_bias, mag_temp, sensor_temp);
 		   // RCLCPP_INFO(this->get_logger(), "device_rtc_seconds: %u, device_rtc_sub_seconds: %u, device_rtc_nanos: %u", device_rtc_seconds, device_rtc_sub_seconds, device_rtc_nanos);
 
 	     }

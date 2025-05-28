@@ -101,10 +101,15 @@ namespace drivers
 
         uint32_t packet_count = 0;            // packet counter
 
+        uint32_t t1_seconds = 0;		      // t1 seconds
+        uint32_t t1_nanos = 0;		  	      // t1 nanos
+
         bool enable_magneto = false;          // enable magnetometer
         bool publish_magneto = false;         // publish magnetometer data
 
         AdaptiveFilter* filter_timing;
+		AdaptiveFilter* filter_rtt;
+		AdaptiveFilter* filter_offset;
 
     };
   }
