@@ -9,9 +9,9 @@ class AdaptiveFilterRTT {
 
     private:
 
-        const double initial_alpha = 0.1;     // starting learning rate (more aggressive)
-        const double final_alpha = 0.01;      // final learning rate
-        const uint32_t warmup_samples = 128;  // number of samples for initial adaptation
+        const double initial_alpha = 0.4;     // starting learning rate (more aggressive)
+        const double final_alpha = 0.1;       // final learning rate
+        const uint32_t warmup_samples = 8;    // number of samples for initial adaptation
         double rtt;                           // round trip time
         double offset;                        // time offset
         uint64_t sample_count;         		  // number of samples measured

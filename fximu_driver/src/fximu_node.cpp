@@ -181,6 +181,8 @@ namespace drivers
         throw ex;
       }
 
+      // TODO: use filter warmed up flag, instead of first_trigger for 63 64
+
       try {
         const auto fc_string = declare_parameter<std::string>("flow_control", "none");
         if (fc_string == "none") {
@@ -558,7 +560,6 @@ namespace drivers
         (buffer[0] == DATA_PREFIX) &                                  			    // prefix check
         (buffer[USB_PACKET_SIZE - 1] == PACKET_POSTFIX)                   			// postfix check
       ) {
-
         const auto received_marker = get_time();									// get packet received time
         const auto since_epoch = received_marker.time_since_epoch();				// single epoch calculation with direct uint32_t conversion
 
@@ -626,6 +627,7 @@ namespace drivers
           mag_data.magnetic_field.y = R4(buffer, 41 + 4);				  // my
           mag_data.magnetic_field.z = R4(buffer, 41 + 8);			      // mz
 
+          // TODO: make const
           uint32_t device_rtc_seconds = U4(buffer, 53);					  // RTC seconds
           uint16_t device_rtc_ticks = U2(buffer, 57);			          // RTC ticks
           int8_t rtc_offset = (int8_t) buffer[59];                        // RTC sync offset
@@ -644,9 +646,14 @@ namespace drivers
           const auto device_point = device_timestamp.first + device_timestamp.second;
           const int32_t nanos_diff = (received_point - device_point).count();
 
-		  // TODO: should be difference from previous nanos_diff
+          // TODO: driver corrects RTC with NTP like syncronization
+          //       offset is calculated and tracked.
+          //       imu packet should be corrected with this offset.
+          //       this offset updated after each sync.
+          //       after each sync
 
 		  if(abs(nanos_diff) > 900000000) {
+
 		  	RCLCPP_ERROR(this->get_logger(), "threshold exceeded - nanos_diff %d rtc %d.%d host %d.%d",
 				nanos_diff,
 				device_rtc_seconds,
@@ -654,11 +661,19 @@ namespace drivers
 				received_marker_sec,
 				received_marker_ns);
 
-			// TODO: request reset
+            // TODO: connection state
+            // TODO: reconnect_feature() on tm4c - it must recalculate cached vars, and reset certain values.
+			// TODO: skip packet
+            // TODO: if second time, reset driver
 			// this->reset_driver();
 
 		  } else {
 
+            // TODO: dont need filter_timing, any more, but test before erasing it.
+            //       test that rtt is in par with delay. as a matter of fact, we can
+            //       investigate why rtt is expected/2 on x86.
+            //       observe what on x86 and rpi, the rtt, and packet delay.
+            //       packet delay must be half of rtt
 			filter_timing->update(nanos_diff);
 
           	// stamp for imu packet
@@ -683,57 +698,59 @@ namespace drivers
 				device_rtc_seconds,
 				device_rtc_ticks,
 				received_marker_sec,
-				received_marker_ns);*/
+				received_marker_ns);
+            */
 		  }
 
-          packet_count++;
-		  // TODO: this changes with output frequency.
-          if(packet_count % 512 == 0) { // notice: do not use less than 2 seconds
-            /*
-		    double period_mean = filter_timing->getAverage();
-            RCLCPP_INFO(this->get_logger(), "avg %f std_dev %f rtc_offset %d",
-                         period_mean,
-                         filter_timing->getStdDev(),
-						 rtc_offset);*/
+          /*
+		  double period_mean = filter_timing->getAverage();
+          RCLCPP_INFO(this->get_logger(), "avg %f std_dev %f rtc_offset %d",
+                      period_mean,
+                      filter_timing->getStdDev(),
+			    	  rtc_offset);
+          */
 
-            // sync request procedure starts here
-            u32_to_ui8 u;
-            i32_to_ui8 i;
+          // TODO:  when prev_device_rtc_tics is 0. should skip first run, but it already does
+          //        however even when it skips first run, it does not skip by noting prev_device_rtc_ticks
+          // mid-second interrupt, according to sensor rtc
+          if((prev_device_rtc_ticks < 16384) && (device_rtc_ticks >= 16384)) {
 
-            // precalculated offset to gain time
-            i.i32 = (int32_t) filter_rtt->getOffset();
-            sync_packet[9] = i.ui8[0];
-            sync_packet[10] = i.ui8[1];
-            sync_packet[11] = i.ui8[2];
-            sync_packet[12] = i.ui8[3];
+              if(device_rtc_seconds % 4 == 0) {                        // each 3 seconds
 
-            // TODO: test init sync with a led
+                u32_to_ui8 u;                                          // sync request procedure starts here
+                i32_to_ui8 i;
 
-            auto t1_time = get_time();  					  // time marker
-            // t1_time += std::chrono::microseconds(0);       // add a propagation delay // TODO: remove from ALL
+                // precalculated offset to gain time
+                // i.i32 = (int32_t) filter_rtt->getOffset();
+                i.i32 = phi;
+                sync_packet[9] = i.ui8[0];
+                sync_packet[10] = i.ui8[1];
+                sync_packet[11] = i.ui8[2];
+                sync_packet[12] = i.ui8[3];
 
-            // calculate seconds and nanoseconds
-            t1_seconds = std::chrono::duration_cast<std::chrono::seconds>(t1_time.time_since_epoch()).count();
-            t1_nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(t1_time.time_since_epoch() - std::chrono::seconds(t1_seconds)).count();
+                auto t1_time = get_time();  					   // time marker
+                t1_time += std::chrono::microseconds(0);           // add a propagation delay
 
-            // t1 seconds
-            u.u32 = t1_seconds;
-            sync_packet[1] = u.ui8[0];
-            sync_packet[2] = u.ui8[1];
-            sync_packet[3] = u.ui8[2];
-            sync_packet[4] = u.ui8[3];
+                t1_seconds = std::chrono::duration_cast<std::chrono::seconds>(t1_time.time_since_epoch()).count();
+                t1_nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(t1_time.time_since_epoch() - std::chrono::seconds(t1_seconds)).count();
 
-            // t1 nanos
-            u.u32 = t1_nanos;
-            sync_packet[5] = u.ui8[0];
-            sync_packet[6] = u.ui8[1];
-            sync_packet[7] = u.ui8[2];
-            sync_packet[8] = u.ui8[3];
+                u.u32 = t1_seconds;
+                sync_packet[1] = u.ui8[0];
+                sync_packet[2] = u.ui8[1];
+                sync_packet[3] = u.ui8[2];
+                sync_packet[4] = u.ui8[3];
 
-            m_serial_driver->port()->send(sync_packet);
+                u.u32 = t1_nanos;
+                sync_packet[5] = u.ui8[0];
+                sync_packet[6] = u.ui8[1];
+                sync_packet[7] = u.ui8[2];
+                sync_packet[8] = u.ui8[3];
 
+                m_serial_driver->port()->send(sync_packet);
+
+              }
           }
-
+          prev_device_rtc_ticks = device_rtc_ticks;
         }
 
       } else if(
@@ -789,8 +806,8 @@ namespace drivers
            const auto t3_point = t3.first + t3.second;
            const auto t4_point = t4.first + t4.second;
 
-           const int32_t sigma = (t4_point - t1_point).count() - (t3_point - t2_point).count();
-	       const int32_t phi = ((t2_point - t1_point).count() + (t3_point - t4_point).count()) / 2;
+           sigma = (t4_point - t1_point).count() - (t3_point - t2_point).count();
+	       phi = ((t2_point - t1_point).count() + (t3_point - t4_point).count()) / 2;
 
            filter_rtt->update(sigma, phi);
 

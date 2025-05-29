@@ -99,10 +99,13 @@ namespace drivers
         uint8_t packet_seq = 0;               // current packet sequence
         uint8_t prev_packet_seq = 0;          // previous packet sequence
 
-        uint32_t packet_count = 0;            // packet counter
+        uint16_t prev_device_rtc_ticks = 0;   // prev device ticks
 
         uint32_t t1_seconds = 0;		      // t1 seconds
         uint32_t t1_nanos = 0;		  	      // t1 nanos
+
+        int32_t sigma = 0;
+        int32_t phi = 0;
 
         bool enable_magneto = false;          // enable magnetometer
         bool publish_magneto = false;         // publish magnetometer data
