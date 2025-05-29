@@ -721,8 +721,9 @@ namespace drivers
                 i32_to_ui8 i;
 
                 // precalculated offset to gain time
-                // i.i32 = (int32_t) filter_rtt->getOffset();
-                i.i32 = phi;
+                i.i32 = (int32_t) filter_rtt->getOffset();             // sends the filtered offset
+                // TODO: like this in rpi i.i32 = phi;                 // sends last calculated offset
+
                 sync_packet[9] = i.ui8[0];
                 sync_packet[10] = i.ui8[1];
                 sync_packet[11] = i.ui8[2];
