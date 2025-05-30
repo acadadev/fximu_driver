@@ -226,6 +226,9 @@ namespace drivers
 						case 0x06:
 							RCLCPP_INFO(this->get_logger(), "SYS_CODE (0x06): Magnetometer overflow");
 							break;
+						case 0x07:
+							RCLCPP_INFO(this->get_logger(), "SYS_CODE (0x07): RTC SUB adjusted to zero");
+							break;
 						default:
 							break;
 					}
@@ -448,6 +451,9 @@ namespace drivers
 	      //        - use of sensor clock
           //        - ENU or NED create option and study
           //        - AUDIT: is gravity removed, is there a boolean for it? is it removed wrong from the packet.
+          // TODO: BUG
+          // received this mid operation SYS_CODE (0x02): Initial calibration failed due non-steady state threshold
+		  // should only appear when initial calibration
 
         }
 
