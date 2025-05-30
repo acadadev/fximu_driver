@@ -375,10 +375,9 @@ namespace drivers
 
           	// stamp for imu packet
           	// rclcpp::Time stamp = rclcpp::Clock().now();
-
             //  + rclcpp::Duration(0, device_rtc_nanos);
-
           	//rclcpp::Time stamp1 = rclcpp::Time(device_rtc_seconds, device_rtc_nanos);
+
           	rclcpp::Time stamp(static_cast<uint64_t>((device_rtc_seconds * 1e9) + device_rtc_nanos));
           	imu_data.header.stamp = stamp;
           	imu_data.header.frame_id = imu_frame_id;
@@ -393,7 +392,10 @@ namespace drivers
              	imu_publisher->publish(imu_data);              // publish imu data only
           	}
 
-            filter_delay->update(nanos_diff);
+			// filter_delay->update(nanos_diff);
+
+			// substract average from nanos diff to get true offset
+            filter_delay->update(nanos_diff - filter_offset->getAverage());
 
           	// here we send sync request packet. this triggers mid second
           	if((prev_device_rtc_ticks < 16384) && (device_rtc_ticks >= 16384)) {
@@ -524,7 +526,9 @@ namespace drivers
 
            		filter_rtt->update(sigma);
            		filter_offset->update(phi);
-           		RCLCPP_INFO(this->get_logger(), "RTT %f OFFSET %f TRIM %d", filter_rtt->getAverage(), filter_offset->getAverage(), applied_rtc_trim);
+
+			    RCLCPP_INFO(this->get_logger(), "t1 %llu t2 %llu t3 %llu t4 %llu", t1_point.count(), t2_point.count(), t3_point.count(), t4_point.count());
+           		RCLCPP_INFO(this->get_logger(), "rtt %f offset %f trim %d", filter_rtt->getAverage(), filter_offset->getAverage(), applied_rtc_trim);
 		   }
 
            /*
