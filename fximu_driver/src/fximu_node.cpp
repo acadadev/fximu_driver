@@ -357,19 +357,19 @@ namespace drivers
 
 		  if(abs(nanos_diff) > 900000000) {
 
-		  	RCLCPP_ERROR(this->get_logger(), "threshold nanos_diff %d rtc %d.%d host %d.%d",
-				nanos_diff,
-				device_rtc_seconds,
-				device_rtc_ticks,
-				received_marker_sec,
-				received_marker_ns);
+		  		RCLCPP_ERROR(this->get_logger(), "threshold nanos_diff %d rtc %d.%d host %d.%d",
+					nanos_diff,
+					device_rtc_seconds,
+					device_rtc_ticks,
+					received_marker_sec,
+					received_marker_ns);
 
-			prev_device_rtc_ticks = 16384;				// this delays the sync cycle until next time
+				prev_device_rtc_ticks = 16384;				// this delays the sync cycle until next time
 
-			// TODO: rename timestate, or consider adding a state machine
-		    // if nanos_diff exceed threshold for 3 times in a row reset the driver
-			if(time_state >= 3) { this->reset_driver();}
-			time_state = time_state + 1;
+				// TODO: rename timestate, or consider adding a state machine
+		    	// if nanos_diff exceed threshold for 3 times in a row reset the driver
+				if(time_state >= 3) { this->reset_driver();}
+				time_state = time_state + 1;
 
 		  } else {
 
@@ -394,6 +394,7 @@ namespace drivers
              	imu_publisher->publish(imu_data);              // publish imu data only
           	}
 
+            // raw nanos_diff filter
 			filter_delay_raw->update(nanos_diff);
 
 			// substract average from nanos diff to get true offset
@@ -437,10 +438,6 @@ namespace drivers
 
                 	m_serial_driver->port()->send(sync_packet);
 
-					double delay_avg = filter_delay->getAverage(); // notice: purposefully done line this
-                    double raw_delay_avg = filter_delay_raw->getAverage(); // not using std
-					RCLCPP_INFO(this->get_logger(), "avg %f raw_avg %f std_dev %f", delay_avg, raw_delay_avg, filter_delay->getStdDev());
-
               } // end each 4 seconds
           	} // end mid second interrupt
 
@@ -449,6 +446,7 @@ namespace drivers
 
 		  } // end threshold check
 
+	      // TODO: filter correction only after offset is correctly avged
           // TODO: ISSUES
           //       - observe delay consistent with rtt and offset
           //       - avg does not constitude offset.
@@ -530,10 +528,21 @@ namespace drivers
            		sigma = (t4_point - t1_point).count() - (t3_point - t2_point).count();
 	       		phi = ((t2_point - t1_point).count() + (t3_point - t4_point).count()) / 2;
 
+				const auto t41 = (t4_point - t1_point).count();
+				const auto t32 = (t3_point - t2_point).count();
+
            		filter_rtt->update(sigma);
            		filter_offset->update(phi);
 
-			    RCLCPP_INFO(this->get_logger(), "t1 %ld t2 %ld t3 %ld t4 %ld", t1_point.count(), t2_point.count(), t3_point.count(), t4_point.count());
+				// TODO: Testing
+				// notice this was done after sending sync packet
+				double delay_avg = filter_delay->getAverage(); // notice: purposefully done line this
+				RCLCPP_INFO(this->get_logger(), "avg %f raw_avg %f std_dev %f", delay_avg, filter_delay_raw->getAverage(), filter_delay->getStdDev());
+
+			    RCLCPP_INFO(this->get_logger(), "t1 %ld t2 %ld t3 %ld t4 %ld t41 %ld t32 %ld",
+					t1_point.count(), t2_point.count(), t3_point.count(), t4_point.count(),
+					t41, t32);
+
            		RCLCPP_INFO(this->get_logger(), "rtt %f offset %f trim %d", filter_rtt->getAverage(), filter_offset->getAverage(), applied_rtc_trim);
 		   }
 
