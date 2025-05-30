@@ -88,11 +88,13 @@ namespace drivers
         void get_serial_parameters();
         void declare_parameters();
         void send_parameters();
-        bool handle_sys_status(uint8_t current_status);
+        bool handle_sys_status(uint8_t current_status, uint8_t sys_code);
         void init_sync();
 
         int8_t read_state = -1;               // serial read state
+        uint8_t time_state = 0;				  // flag to check anomaly in timestamps
 
+        uint8_t sys_code = 0;                 // system code for debug purposes
         uint8_t sys_status = 0;               // current system status
         uint8_t prev_sys_status = 0;          // previous system status
 

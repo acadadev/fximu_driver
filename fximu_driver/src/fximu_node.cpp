@@ -161,96 +161,77 @@ namespace drivers
         // see if sys status changed
         if(current_sys_status != prev_sys_status) {
 
-          prev_sys_status = current_sys_status;        // placed top, in case of reset or soft reset.
+          		prev_sys_status = current_sys_status;        // placed top, in case of reset or soft reset.
 
-          // Bit 7: eeprom init error
-          if ((current_sys_status >> 7) & 1) { // Check if bit 7 is set
-            RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 7 (0x80): EEPROM Initialization Error");
-          }
+          		// Bit 7: eeprom init error
+          		if ((current_sys_status >> 7) & 1) { // Check if bit 7 is set
+            		RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 7 (0x80): EEPROM Initialization Error");
+          		}
 
-          // Bit 6: hard restart required
-          if ((current_sys_status >> 6) & 1) { // Check if bit 6 is set
-            RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 6 (0x40): Hard Restart Required");
-            // send reset if bit6 is set, usb connection will crash, so lifecycle node has to respawn
-            param_packet.assign(USB_PACKET_SIZE, 0);
-            param_packet[0] = PARAMETER_PREFIX;
-            param_packet[1] = PACKET_TYPE_SYSCTL;
-            param_packet[2] = SYSCTL_RESET;
-            param_packet[62] = crc8(param_packet, 10);
-            param_packet[USB_PACKET_SIZE - 1] = PACKET_POSTFIX;
-            m_serial_driver->port()->send(param_packet);
-            rclcpp::sleep_for(std::chrono::milliseconds(3000));  // sleep for 3s for serial port to ready
-            this->reset_driver();                                // restart driver
-            return true;
-          }
+          		// Bit 6: hard restart required
+          		if ((current_sys_status >> 6) & 1) { // Check if bit 6 is set
+            		RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 6 (0x40): Hard Restart Required");
+            		// send reset if bit6 is set, usb connection will crash, so lifecycle node has to respawn
+            		param_packet.assign(USB_PACKET_SIZE, 0);
+            		param_packet[0] = PARAMETER_PREFIX;
+            		param_packet[1] = PACKET_TYPE_SYSCTL;
+            		param_packet[2] = SYSCTL_RESET;
+            		param_packet[62] = crc8(param_packet, 10);
+            		param_packet[USB_PACKET_SIZE - 1] = PACKET_POSTFIX;
+            		m_serial_driver->port()->send(param_packet);
+            		rclcpp::sleep_for(std::chrono::milliseconds(3000));  // sleep for 3s for serial port to ready
+            		this->reset_driver();                                // restart driver
+            		return true;
+          		}
 
-          // Bit 5: soft restart required
-          if ((current_sys_status >> 5) & 1) { // Check if bit 5 is set
-            RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 5 (0x20): Sensor Restart Required");
-            // send soft reset if bit5 is set
-            param_packet.assign(USB_PACKET_SIZE, 0);
-            param_packet[0] = PARAMETER_PREFIX;
-            param_packet[1] = PACKET_TYPE_SYSCTL;
-            param_packet[2] = SYSCTL_SOFTRESET;
-            param_packet[62] = crc8(param_packet, 10);
-            param_packet[USB_PACKET_SIZE - 1] = PACKET_POSTFIX;
-            m_serial_driver->port()->send(param_packet);
-            rclcpp::sleep_for(std::chrono::milliseconds(100));
-            return true;
-          }
+          		// Bit 5: soft restart required
+          		if ((current_sys_status >> 5) & 1) { // Check if bit 5 is set
+            		RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 5 (0x20): Sensor Restart Required");
+            		// send soft reset if bit5 is set
+            		param_packet.assign(USB_PACKET_SIZE, 0);
+            		param_packet[0] = PARAMETER_PREFIX;
+            		param_packet[1] = PACKET_TYPE_SYSCTL;
+            		param_packet[2] = SYSCTL_SOFTRESET;
+            		param_packet[62] = crc8(param_packet, 10);
+            		param_packet[USB_PACKET_SIZE - 1] = PACKET_POSTFIX;
+            		m_serial_driver->port()->send(param_packet);
+            		rclcpp::sleep_for(std::chrono::milliseconds(100));
+            		return true;
+          		}
 
-          // Bit 4: eeprom write error
-          if ((current_sys_status >> 4) & 1) { // Check if bit 4 is set
-             RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 4 (0x10): EEPROM Write Error");
-          }
+          		// Bit 4: eeprom write error
+         		 if ((current_sys_status >> 4) & 1) { // Check if bit 4 is set
+            		 RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 4 (0x10): EEPROM Write Error");
+         		 }
 
-          // First 4 bits indicate meaning of sys_code
-		  uint8_t code_indicator = current_sys_status & 0x0F;
-		  switch(code_indicator) {
-				0x01:
-          			if (current_sys_status & 1) {      // SYS_CODE if bit
-            			switch(sys_code) {
-							0x01:
-								RCLCPP_INFO(this->get_logger(), "SYS_CODE (0x01): Sensor Soft Restarted");
-								break;
-							0x02:
-								RCLCPP_INFO(this->get_logger(), "SYS_CODE (0x02): Initial calibration failed due non-steady state threshold");
-								break;
-							0x03:
-								RCLCPP_INFO(this->get_logger(), "SYS_CODE (0x03): Initial calibration failed due to non-steady state");
-								break;
-							0x04:
-								RCLCPP_INFO(this->get_logger(), "SYS_CODE (0x04): UI Filter Configuration Error");
-								break;
-							0x05:
-								RCLCPP_INFO(this->get_logger(), "SYS_CODE (0x05): RTC Trim applied");
-								break;
-							0x06:
-								RCLCPP_INFO(this->get_logger(), "SYS_CODE (0x06): Magnetometer overflow");
-								break;
-							default:
+        		  // First 4 bits indicate meaning of sys_code
+		  		uint8_t code_indicator = current_sys_status & 0x0F;
+		  		if(code_indicator == 0x01) {
+            		switch(sys_code) {
+						case 0x01:
+							RCLCPP_INFO(this->get_logger(), "SYS_CODE (0x01): Sensor Restart Complete");
 							break;
-						}
+						case 0x02:
+							RCLCPP_INFO(this->get_logger(), "SYS_CODE (0x02): Initial calibration failed due non-steady state threshold");
+							break;
+						case 0x03:
+							RCLCPP_INFO(this->get_logger(), "SYS_CODE (0x03): Initial calibration failed due to non-steady state");
+							break;
+						case 0x04:
+							RCLCPP_INFO(this->get_logger(), "SYS_CODE (0x04): UI Filter Configuration Error");
+							break;
+						case 0x05:
+							RCLCPP_INFO(this->get_logger(), "SYS_CODE (0x05): RTC Trim applied");
+							break;
+						case 0x06:
+							RCLCPP_INFO(this->get_logger(), "SYS_CODE (0x06): Magnetometer overflow");
+							break;
+						default:
+							break;
 					}
-					break;
-				0x02:
+		  		} else if(code_indicator == 0x02) {
 					RCLCPP_INFO(this->get_logger(), "FIFO_HEADER: %d", sys_code);
-					break;
-				default:
-					break;
-		  }
-
-          // Bit 0-3 contain what to do with data in SYS_CODE
-
-          // Bit 1: read fifo header
-          if ((current_sys_status >> 1) & 1) { // Check if bit 1 is set
-            RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 1 (0x02): Sensor Restart Complete");
-          }
-
-          // Bit 0: CODEMARK
-
-
-          }
+		  		}
         }
         return false;
     }
@@ -313,28 +294,30 @@ namespace drivers
           RCLCPP_ERROR(this->get_logger(), "IMU CRC8:%d not equal c_CRC8:%d", crc8, c_crc8);  // crc error
         } else {
 
+	      sys_code = buffer[59];
           sys_status = buffer[61];
 
           if(read_state == -1) {
             RCLCPP_INFO(this->get_logger(), "FXIMU init read_state = -1");
             prev_packet_seq = buffer[60];								  // record incoming packet sequence number as previous
             read_state = 0;                                               // set read state to normal
-            handle_sys_status(sys_status);                                // handle sys_status even in first packet
+            handle_sys_status(sys_status, sys_code);                      // handle sys_status even in first packet
             return;                                                       // return if first read
           } else {
             packet_seq = buffer[60];								      // incoming packet sequence number
             uint8_t expected_seq = prev_packet_seq + 1;                   // calculate expected sequence number
             if(packet_seq != expected_seq) {
               RCLCPP_ERROR(this->get_logger(), "prev_packet_seq: %d, expected_seq: %d, skip: packet_seq: %d", prev_packet_seq, expected_seq, packet_seq);
-              if(read_state == 0) { read_state = 1; } else if(read_state == 1) { read_state = -1; return; }   // reset state if skips for a second time
+			  // we receive error, so if state is 0, we increment it, and if it already 1 we reset state
+              if(read_state == 0) { read_state = 1; } else if(read_state == 1) { read_state = -1; return; }
             } else {
               read_state = 0;
             }
             prev_packet_seq = packet_seq;								  // record sequence number as previous
-            handle_sys_status(sys_status);                                // handle sys_status
+            handle_sys_status(sys_status, sys_code);                      // handle sys_status
           }
 
-          // notice: we can have read_state 0 or 1 at this point
+          // notice: we can have read_state 0 or 1 at this point, read_state should not be used for anything else
 
           // compose imu packet
           auto imu_data = sensor_msgs::msg::Imu(); 
@@ -357,6 +340,7 @@ namespace drivers
           mag_data.magnetic_field.y = R4(buffer, 41 + 4);				  // my
           mag_data.magnetic_field.z = R4(buffer, 41 + 8);			      // mz
 
+
           const uint32_t device_rtc_seconds = U4(buffer, 53);			      // RTC seconds
           const uint16_t device_rtc_ticks = U2(buffer, 57);			          // RTC ticks
           const uint32_t device_rtc_nanos = device_rtc_ticks * 30517.578125;  // RTC nanos
@@ -375,16 +359,23 @@ namespace drivers
 				received_marker_sec,
 				received_marker_ns);
 
-			// in case the device_rtc_ticks is wrong, this delays the sync cycle until next time
-			prev_device_rtc_ticks = 16384;
+			prev_device_rtc_ticks = 16384;				// this delays the sync cycle until next time
 
-			// this->reset_driver();
+			// TODO: rename timestate, or consider adding a stateachine
+		    // if nanos_diff exceed threshold for 3 times in a row reset the driver
+			if(time_state >= 3) { this->reset_driver();}
+			time_state = time_state + 1;
 
 		  } else {
 
+			time_state = 0;
+
           	// stamp for imu packet
           	// rclcpp::Time stamp = rclcpp::Clock().now();
-          	// rclcpp::Time stamp = rclcpp::Time(device_rtc_seconds) + rclcpp::Duration(0, device_rtc_nanos);
+
+            //  + rclcpp::Duration(0, device_rtc_nanos);
+
+          	//rclcpp::Time stamp1 = rclcpp::Time(device_rtc_seconds, device_rtc_nanos);
           	rclcpp::Time stamp(static_cast<uint64_t>((device_rtc_seconds * 1e9) + device_rtc_nanos));
           	imu_data.header.stamp = stamp;
           	imu_data.header.frame_id = imu_frame_id;
@@ -443,11 +434,10 @@ namespace drivers
 
           // TODO: ISSUES
           //       - observe delay consistent with rtt and offset
-          //       - implement a connection state, threshold exceeded -> skip packet if second time, reset driver
-          //       - implement packet timing correction based on offset
-          //       - some place we need to be able to request reset because of time delta.
           //       - ENU or NED create option and study
           //       - AUDIT: is gravity removed, is there a boolean for it? is it removed wrong from the packet.
+
+          // TODO:  - implement packet timing correction based on offset
 
         }
 
