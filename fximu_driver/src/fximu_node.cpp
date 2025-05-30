@@ -35,9 +35,9 @@ namespace drivers
     {
       get_serial_parameters();                   // get serial parameters for connection
       declare_parameters();                      // get device parameters with default from yaml file
-	  filter_rtt = new AdaptiveFilter();         // ntp round trip time filter
-      filter_offset = new AdaptiveFilter();      // ntp offset time filter
-      filter_delay = new AdaptiveFilterPeriod(); // packet delay time filter
+	  filter_rtt = new AdaptiveFilter(0.0, 0.25, 0.01, 128);          // ntp round trip time filter
+      filter_offset = new AdaptiveFilter(0.0, 0.25, 0.0625, 16);      // ntp offset time filter
+      filter_delay = new AdaptiveFilterPeriod();                      // packet delay time filter
       init_packet.assign(6, 0);                  // initial sync packet
       sync_packet.assign(64, 0);                 // ntp sync packet
       param_packet.assign(64, 0);                // parameter packet
@@ -361,7 +361,7 @@ namespace drivers
 
 			prev_device_rtc_ticks = 16384;				// this delays the sync cycle until next time
 
-			// TODO: rename timestate, or consider adding a stateachine
+			// TODO: rename timestate, or consider adding a state machine
 		    // if nanos_diff exceed threshold for 3 times in a row reset the driver
 			if(time_state >= 3) { this->reset_driver();}
 			time_state = time_state + 1;
@@ -394,13 +394,15 @@ namespace drivers
 
           	// here we send sync request packet. this triggers mid second
           	if((prev_device_rtc_ticks < 16384) && (device_rtc_ticks >= 16384)) {
+
               	if(device_rtc_seconds % 4 == 0) {                          // each 4 seconds
+
                 	u32_to_ui8 u;                                          // sync request procedure starts here
                 	i32_to_ui8 i;
 
 					// if filter is not warmed up, we send 0 as external offset
-					if(filter_rtt->isWarmedUp()) {
-						i.i32 = (int32_t) filter_rtt->getAverage();        // sends the filtered offset
+					if(filter_offset->isWarmedUp()) {
+						i.i32 = (int32_t) filter_offset->getAverage();        // sends the filtered offset
 					} else {
 						i.i32 = 0;											// sends the filtered offset
 					}
@@ -424,7 +426,11 @@ namespace drivers
                 	sync_packet[7] = u.ui8[2];
                 	sync_packet[8] = u.ui8[3];
                 	m_serial_driver->port()->send(sync_packet);
-              }
+
+					double delay_avg = filter_delay->getAverage(); // notice: purposefully done line this
+					RCLCPP_INFO(this->get_logger(), "avg %f std_dev %f", delay_avg, filter_delay->getStdDev());
+
+              } // end each 4 seconds
           	} // end mid second interrupt
 
             // prev_device_rtc_tics is used for the mid-second interrupt
@@ -434,10 +440,14 @@ namespace drivers
 
           // TODO: ISSUES
           //       - observe delay consistent with rtt and offset
-          //       - ENU or NED create option and study
-          //       - AUDIT: is gravity removed, is there a boolean for it? is it removed wrong from the packet.
+          //       - avg does not constitude offset.
+          //       - test new error logging architecture
 
-          // TODO:  - implement packet timing correction based on offset
+          // TODO: FEATURES (can only be implemented once system is stable)
+		  //        - implement packet timing correction based on offset
+	      //        - use of sensor clock
+          //        - ENU or NED create option and study
+          //        - AUDIT: is gravity removed, is there a boolean for it? is it removed wrong from the packet.
 
         }
 
@@ -508,7 +518,7 @@ namespace drivers
 
            		filter_rtt->update(sigma);
            		filter_offset->update(phi);
-           		RCLCPP_INFO(this->get_logger(), "RTT %f OFFSET %f TRIM %d", filter_rtt->getAverage(), filter_rtt->getAverage(), applied_rtc_trim);
+           		RCLCPP_INFO(this->get_logger(), "RTT %f OFFSET %f TRIM %d", filter_rtt->getAverage(), filter_offset->getAverage(), applied_rtc_trim);
 		   }
 
            /*
