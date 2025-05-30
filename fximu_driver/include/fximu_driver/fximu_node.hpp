@@ -120,6 +120,7 @@ namespace drivers
         AdaptiveFilter* filter_rtt;
         AdaptiveFilter* filter_offset;
 		AdaptiveFilterPeriod* filter_delay;
+        AdaptiveFilterPeriod* filter_delay_raw;
 
     };
   }

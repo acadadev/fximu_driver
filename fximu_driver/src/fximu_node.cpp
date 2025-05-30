@@ -24,6 +24,7 @@ namespace drivers
 	  filter_rtt = new AdaptiveFilter(0.0, 0.25, 0.01, 128);          // ntp round trip time filter
       filter_offset = new AdaptiveFilter(0.0, 0.25, 0.0625, 16);      // ntp offset time filter
       filter_delay = new AdaptiveFilterPeriod();                      // packet delay time filter
+	  filter_delay_raw = new AdaptiveFilterPeriod();                  // packet raw delay time filter
       init_packet.assign(6, 0);                  // initial sync packet
       sync_packet.assign(64, 0);                 // ntp sync packet
       param_packet.assign(64, 0);                // parameter packet
@@ -38,6 +39,7 @@ namespace drivers
 	  filter_rtt = new AdaptiveFilter(0.0, 0.25, 0.01, 128);          // ntp round trip time filter
       filter_offset = new AdaptiveFilter(0.0, 0.25, 0.0625, 16);      // ntp offset time filter
       filter_delay = new AdaptiveFilterPeriod();                      // packet delay time filter
+	  filter_delay_raw = new AdaptiveFilterPeriod();                  // packet raw delay time filter
       init_packet.assign(6, 0);                  // initial sync packet
       sync_packet.assign(64, 0);                 // ntp sync packet
       param_packet.assign(64, 0);                // parameter packet
@@ -392,7 +394,7 @@ namespace drivers
              	imu_publisher->publish(imu_data);              // publish imu data only
           	}
 
-			// filter_delay->update(nanos_diff);
+			filter_delay_raw->update(nanos_diff);
 
 			// substract average from nanos diff to get true offset
             filter_delay->update(nanos_diff - filter_offset->getAverage());
@@ -420,20 +422,24 @@ namespace drivers
                 	t1_time += std::chrono::microseconds(0);               // add a propagation delay
                 	t1_seconds = std::chrono::duration_cast<std::chrono::seconds>(t1_time.time_since_epoch()).count();
                 	t1_nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(t1_time.time_since_epoch() - std::chrono::seconds(t1_seconds)).count();
-                	u.u32 = t1_seconds;
+
+					u.u32 = t1_seconds;
                 	sync_packet[1] = u.ui8[0];
                 	sync_packet[2] = u.ui8[1];
                 	sync_packet[3] = u.ui8[2];
                 	sync_packet[4] = u.ui8[3];
+
                 	u.u32 = t1_nanos;
                 	sync_packet[5] = u.ui8[0];
                 	sync_packet[6] = u.ui8[1];
                 	sync_packet[7] = u.ui8[2];
                 	sync_packet[8] = u.ui8[3];
+
                 	m_serial_driver->port()->send(sync_packet);
 
 					double delay_avg = filter_delay->getAverage(); // notice: purposefully done line this
-					RCLCPP_INFO(this->get_logger(), "avg %f std_dev %f", delay_avg, filter_delay->getStdDev());
+                    double raw_delay_avg = filter_delay_raw->getAverage(); // not using std
+					RCLCPP_INFO(this->get_logger(), "avg %f raw_avg %f std_dev %f", delay_avg, raw_delay_avg, filter_delay->getStdDev());
 
               } // end each 4 seconds
           	} // end mid second interrupt
@@ -527,7 +533,7 @@ namespace drivers
            		filter_rtt->update(sigma);
            		filter_offset->update(phi);
 
-			    RCLCPP_INFO(this->get_logger(), "t1 %llu t2 %llu t3 %llu t4 %llu", t1_point.count(), t2_point.count(), t3_point.count(), t4_point.count());
+			    RCLCPP_INFO(this->get_logger(), "t1 %ld t2 %ld t3 %ld t4 %ld", t1_point.count(), t2_point.count(), t3_point.count(), t4_point.count());
            		RCLCPP_INFO(this->get_logger(), "rtt %f offset %f trim %d", filter_rtt->getAverage(), filter_offset->getAverage(), applied_rtc_trim);
 		   }
 
