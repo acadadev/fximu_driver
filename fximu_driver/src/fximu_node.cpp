@@ -398,7 +398,10 @@ namespace drivers
 			filter_delay_raw->update(nanos_diff);
 
 			// substract average from nanos diff to get true offset
-            filter_delay->update(nanos_diff - filter_offset->getAverage());
+            filter_delay->update(nanos_diff + filter_offset->getAverage());
+
+			// TODO: TEST: observe initial status logs after restart and cold restart
+			//             to figure out stale data problems
 
           	// here we send sync request packet. this triggers mid second
           	if((prev_device_rtc_ticks < 16384) && (device_rtc_ticks >= 16384)) {
@@ -465,17 +468,17 @@ namespace drivers
 
       } else if(
         (bytes_transferred == 64) &
-        (buffer[0] == DIAG_PREFIX) &                                // prefix check
-        (buffer[USB_PACKET_SIZE - 1] == PACKET_POSTFIX)               // postfix check
+        (buffer[0] == DIAG_PREFIX) &                                				// prefix check
+        (buffer[USB_PACKET_SIZE - 1] == PACKET_POSTFIX)               				// postfix check
 	  ) {
 
-        const auto received_marker = get_time();									// get packet received time
-        const auto since_epoch = received_marker.time_since_epoch();				// single epoch calculation with direct uint32_t conversion
+        const auto t4_mark = get_time();											// get packet received time
+        const auto since_epoch = t4_mark.time_since_epoch();						// single epoch calculation with direct uint32_t conversion
 
-        const uint32_t received_marker_sec = static_cast<uint32_t>(					// received second
+        const uint32_t t4_mark_seconds = static_cast<uint32_t>(					    // received second
             std::chrono::duration_cast<std::chrono::seconds>(since_epoch).count()
         );
-        const uint32_t received_marker_ns = static_cast<uint32_t>(					// received nanoseconds with guaranteed range [0, 999,999,999]
+        const uint32_t t4_mark_nanos = static_cast<uint32_t>(						// received nanoseconds with guaranteed range [0, 999,999,999]
             (since_epoch % std::chrono::seconds(1)).count()
         );
 
@@ -516,7 +519,7 @@ namespace drivers
 	   			const timestamp t1 {std::chrono::seconds(t1_seconds), std::chrono::nanoseconds(t1_nanos)};
        	   		const timestamp t2 {std::chrono::seconds{t2_seconds}, std::chrono::nanoseconds{t2_nanos}};
 	   			const timestamp t3 {std::chrono::seconds{t3_seconds}, std::chrono::nanoseconds{t3_nanos}};
-       			const timestamp t4 {std::chrono::seconds{received_marker_sec}, std::chrono::nanoseconds{received_marker_ns}};
+       			const timestamp t4 {std::chrono::seconds{t4_mark_seconds}, std::chrono::nanoseconds{t4_mark_nanos}};
 
            		const auto t1_point = t1.first + t1.second;
            		const auto t2_point = t2.first + t2.second;
