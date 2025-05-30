@@ -10,8 +10,8 @@
 #define STATUS_OUT_SYNC 0x06
 
 #include "fximu_driver/fximu_driver.hpp"
+#include "fximu_driver/adaptive_filter.h"
 #include "fximu_driver/adaptive_filter_period.h"
-#include "fximu_driver/adaptive_filter_rtt.h"
 
 #include <memory>
 #include <string>
@@ -115,8 +115,9 @@ namespace drivers
         std::vector<uint8_t> param_packet;    // parameter packet 64 bytes
         std::vector<uint8_t> imu_packet;      // imu packet 64 bytes
 
-        AdaptiveFilter* filter_timing;
-		AdaptiveFilterRTT* filter_rtt;
+        AdaptiveFilter* filter_rtt;
+        AdaptiveFilter* filter_offset;
+		AdaptiveFilterPeriod* filter_delay;
 
     };
   }
