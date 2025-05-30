@@ -17,7 +17,7 @@ public:
     AdaptiveFilterPeriod() : period_mean(0.0), period_M2(0.0) { }
 
     void update(int32_t value) {
-        sample_count++;
+        sample_count++; // TODO: use uint64
         double delta = value - period_mean;        // update Welford's algorithm variables for running variance
         period_mean += delta / sample_count;
         double delta2 = value - period_mean;

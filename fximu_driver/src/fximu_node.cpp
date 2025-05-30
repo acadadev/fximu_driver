@@ -345,7 +345,6 @@ namespace drivers
           mag_data.magnetic_field.y = R4(buffer, 41 + 4);				  // my
           mag_data.magnetic_field.z = R4(buffer, 41 + 8);			      // mz
 
-
           const uint32_t device_rtc_seconds = U4(buffer, 53);			      // RTC seconds
           const uint16_t device_rtc_ticks = U2(buffer, 57);			          // RTC ticks
           const uint32_t device_rtc_nanos = device_rtc_ticks * 30517.578125;  // RTC nanos
@@ -397,8 +396,12 @@ namespace drivers
             // raw nanos_diff filter
 			filter_delay_raw->update(nanos_diff);
 
-			// substract average from nanos diff to get true offset
-            filter_delay->update(nanos_diff + filter_offset->getAverage());
+			// nanos_diff is received_time - device_rtc_time
+			// filter_offset is rtc offset, + for device rtc leading
+            // (received_point - device_point).count();
+            // so it is (a - b) already. we need to substract it from b.
+            // so we add it.
+            filter_delay->update((int32_t) (nanos_diff + ((int32_t) filter_offset->getAverage())));
 
 			// TODO: TEST: observe initial status logs after restart and cold restart
 			//             to figure out stale data problems
@@ -539,8 +542,11 @@ namespace drivers
 
 				// TODO: Testing
 				// notice this was done after sending sync packet
-				double delay_avg = filter_delay->getAverage(); // notice: purposefully done line this
-				RCLCPP_INFO(this->get_logger(), "avg %f raw_avg %f std_dev %f", delay_avg, filter_delay_raw->getAverage(), filter_delay->getStdDev());
+
+				double delay_avg = filter_delay->getAverage(); 		// notice: purposefully done line this, not to trigger statistics reset
+				double delay_raw = filter_delay_raw->getAverage(); 	// notice: purposefully done line this
+
+				RCLCPP_INFO(this->get_logger(), "avg %f raw_avg %f std_dev %f std_dev_raw %f", delay_avg, delay_raw, filter_delay->getStdDev(), filter_delay_raw->getStdDev());
 
 			    RCLCPP_INFO(this->get_logger(), "t1 %ld t2 %ld t3 %ld t4 %ld t41 %ld t32 %ld",
 					t1_point.count(), t2_point.count(), t3_point.count(), t4_point.count(),
