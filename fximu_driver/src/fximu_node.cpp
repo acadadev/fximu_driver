@@ -354,6 +354,15 @@ namespace drivers
           const auto device_point = device_timestamp.first + device_timestamp.second;
           const int32_t nanos_diff = (received_point - device_point).count();
 
+		  // TODO: what if nanos_diff is negative, how to apply offset to it.
+          // TODO: 1ST writie printer for each packet delay.
+          //       - it should have device rtc time
+          //       - host time
+          //       - delta. as well as last trim applied.
+          //       - for each packet
+          //
+	      //       - we have two problems a. rtt b. negatives
+
 		  if(abs(nanos_diff) > 900000000) {
 
 		  		RCLCPP_ERROR(this->get_logger(), "threshold nanos_diff %d rtc %d.%d host %d.%d",
@@ -401,22 +410,35 @@ namespace drivers
             // (received_point - device_point).count();
             // so it is (a - b) already. we need to substract it from b.
             // so we add it.
-            filter_delay->update((int32_t) (nanos_diff + ((int32_t) filter_offset->getAverage())));
+            // but what about negatives? when the situation is (a - b) + -5
+            //filter_delay->update((int32_t) (nanos_diff + ((int32_t) filter_offset->getAverage())));
+			filter_delay->update((int32_t) (nanos_diff + phi));
 
 			// TODO: TEST: observe initial status logs after restart and cold restart
 			//             to figure out stale data problems
 
+			// TODO: offset filter must be regional i.e. taking the last n measurements.
+
           	// here we send sync request packet. this triggers mid second
           	if((prev_device_rtc_ticks < 16384) && (device_rtc_ticks >= 16384)) {
 
-              	if(device_rtc_seconds % 4 == 0) {                          // each 4 seconds
+              	//if(device_rtc_seconds % 4 == 0) {                          // each 4 seconds
 
                 	u32_to_ui8 u;                                          // sync request procedure starts here
                 	i32_to_ui8 i;
 
+					// TODO: sync sending can be orchestrated to skip rtc adj seconds, like 63 to 64
+
+					// TODO: no need to filter phi, but maybe outlier detection.
+                    //       also t3 t2 has to be errorful
+                    //       t3 and t2 can not be errorful since they are done at middle of second
+                    ///      packet rejection is a must based on time diff with prev packet
+
 					// if filter is not warmed up, we send 0 as external offset
 					if(filter_offset->isWarmedUp()) {
-						i.i32 = (int32_t) filter_offset->getAverage();        // sends the filtered offset
+						// TODOi.i32 = (int32_t) filter_offset->getAverage();        // sends the filtered offset
+						i.i32 = (int32_t) phi; 									     // sends last measured offset
+
 					} else {
 						i.i32 = 0;											// sends the filtered offset
 					}
@@ -444,7 +466,7 @@ namespace drivers
 
                 	m_serial_driver->port()->send(sync_packet);
 
-              } // end each 4 seconds
+              //} // end each 4 seconds
           	} // end mid second interrupt
 
             // prev_device_rtc_tics is used for the mid-second interrupt
@@ -546,11 +568,24 @@ namespace drivers
 				double delay_avg = filter_delay->getAverage(); 		// notice: purposefully done line this, not to trigger statistics reset
 				double delay_raw = filter_delay_raw->getAverage(); 	// notice: purposefully done line this
 
+				// TODO: need a different more recent filter for offset. or not even a filter. the recent
+
+				// TODO: thought
+                //        - we increment delay with offset
+                //        - if offset  is negative, we decrement  from it
+                //        - but what if the delay is negative?
+				//        - std dev of corrected and raw delays are the same
+
 				RCLCPP_INFO(this->get_logger(), "avg %f raw_avg %f std_dev %f std_dev_raw %f", delay_avg, delay_raw, filter_delay->getStdDev(), filter_delay_raw->getStdDev());
+
+				// TODO: maybe we need to change the find of filter.
+				// TODO: put clause in offset correction, only to do so when filter is warmed.
+                //       in other words we should only correct time when filter_offset has converged.
 
 			    RCLCPP_INFO(this->get_logger(), "t1 %ld t2 %ld t3 %ld t4 %ld t41 %ld t32 %ld",
 					t1_point.count(), t2_point.count(), t3_point.count(), t4_point.count(),
 					t41, t32);
+
 
            		RCLCPP_INFO(this->get_logger(), "rtt %f offset %f trim %d", filter_rtt->getAverage(), filter_offset->getAverage(), applied_rtc_trim);
 		   }
