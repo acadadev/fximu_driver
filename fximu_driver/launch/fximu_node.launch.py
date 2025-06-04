@@ -56,7 +56,7 @@ def generate_launch_description():
         event_handler=OnStateTransition(
             target_lifecycle_node=fximu_driver_node,
             start_state='configuring',
-            goal_state='inactive', # TODO:
+            goal_state='inactive',
             entities=[
                 EmitEvent(
                     event=ChangeState(

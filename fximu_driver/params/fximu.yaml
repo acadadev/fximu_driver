@@ -29,7 +29,7 @@
     magOdr: 0x4                               # 100hz
     magAvg: 0x2                               # 4
                                               # uint16 section
-    timer0Sec: 4                              # timer0 seconds TODO: document
+    timer0Sec: 4                              # timer0 seconds TODO: retired
     timer1Sec: 5                              # initial calibration seconds
                                               # int16 section
     offsetGyroX: 0                            # gyro offset x

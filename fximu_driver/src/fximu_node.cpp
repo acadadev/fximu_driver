@@ -11,40 +11,23 @@ using lifecycle_msgs::msg::State;
 using namespace std::chrono;
 using timestamp = std::pair<seconds, nanoseconds>;
 
-// TODO: filter correction only after offset is correctly avged
-// TODO: ISSUES
-//       - observe delay consistent with rtt and offset
-//       - avg does not constitude offset.
-//       - test new error logging architecture
-
 // TODO: FEATURES (can only be implemented once system is stable)
-//        - implement packet timing correction based on offset
 //        - use of sensor clock
 //        - ENU or NED create option and study
 //        - AUDIT: is gravity removed, is there a boolean for it? is it removed wrong from the packet.
-// TODO: BUG
-// received this mid operation SYS_CODE (0x02): Initial calibration failed due non-steady state threshold
-// should only appear when initial calibration
 
-// TODO: what if nanos_diff is negative, how to apply offset to it.
-// TODO: 1ST writie printer for each packet delay.
-//       - it should have device rtc time
-//       - host time
-//       - delta. as well as last trim applied.
-//       - for each packet
-//       - we have two problems a. rtt b. negatives
 
-// TODO: only correct time when filter_offset has converged
 // TODO: need a different more recent filter for offset. or not even a filter. the recent
 //        - we increment delay with offset
 //        - if offset  is negative, we decrement  from it
 //        - but what if the delay is negative?
 //        - std dev of corrected and raw delays are the same
+// TODO: no need to filter phi, but maybe outlier detection
 
 // TODO: TEST: observe initial status logs after restart and cold restart to figure out stale data problems
 // TODO: offset filter must be regional i.e. taking the last n measurements.
-// TODO: sync sending can be orchestrated to skip rtc adj seconds, like 63 to 64
-// TODO: no need to filter phi, but maybe outlier detection
+
+
 
 namespace drivers
 {
@@ -413,7 +396,10 @@ namespace drivers
 				prev_device_rtc_ticks = 16384;				// this delays the sync cycle until next time
 
 		    	// if nanos_diff exceed threshold for 3 times in a row reset the driver
-				if(threshold_count >= 3) { this->reset_driver();}
+				if(threshold_count >= 3) {
+					this->reset_driver();
+					return;
+				}
 				threshold_count = threshold_count + 1;
 
 		  } else {
@@ -451,47 +437,42 @@ namespace drivers
           	// here we send sync request packet. this triggers mid second
           	if((prev_device_rtc_ticks < 16384) && (device_rtc_ticks >= 16384)) {
 
-              	//if(device_rtc_seconds % 4 == 0) {                          // each 4 seconds
+				// sync request procedure starts here
+                u32_to_ui8 u;
+                i32_to_ui8 i;
 
-                	u32_to_ui8 u;                                          // sync request procedure starts here
-                	i32_to_ui8 i;
+				if(device_rtc_seconds % 64 == 62) {						     // at 62nd second
+					i.i32 = (int32_t) phi; 									 // sends last measured offset
+				} else if(device_rtc_seconds % 64 == 63) {					 // skip sending packet at 63rd second
+					return;
+				} else {
+					i.i32 = 0;
+				}
 
-                    //       also t3 t2 has to be errorful
-                    //       t3 and t2 can not be errorful since they are done at middle of second
-                    ///      packet rejection is a must based on time diff with prev packet
+                sync_packet[9] = i.ui8[0];							   // precalculated offset to gain time
+                sync_packet[10] = i.ui8[1];
+                sync_packet[11] = i.ui8[2];
+                sync_packet[12] = i.ui8[3];
 
-					// if filter is not warmed up, we send 0 as external offset
-					if(filter_offset->isWarmedUp()) {
-						// TODOi.i32 = (int32_t) filter_offset->getAverage();        // sends the filtered offset
-						i.i32 = (int32_t) phi; 									     // sends last measured offset
-					} else {
-						i.i32 = 0;											// sends the filtered offset
-					}
-                	sync_packet[9] = i.ui8[0];							   // precalculated offset to gain time
-                	sync_packet[10] = i.ui8[1];
-                	sync_packet[11] = i.ui8[2];
-                	sync_packet[12] = i.ui8[3];
+                auto t1_time = get_time();  					   	   // time marker
+                t1_time += std::chrono::microseconds(0);               // add a propagation delay
+                t1_seconds = std::chrono::duration_cast<std::chrono::seconds>(t1_time.time_since_epoch()).count();
+                t1_nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(t1_time.time_since_epoch() - std::chrono::seconds(t1_seconds)).count();
 
-                	auto t1_time = get_time();  					   	   // time marker
-                	t1_time += std::chrono::microseconds(0);               // add a propagation delay
-                	t1_seconds = std::chrono::duration_cast<std::chrono::seconds>(t1_time.time_since_epoch()).count();
-                	t1_nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(t1_time.time_since_epoch() - std::chrono::seconds(t1_seconds)).count();
+				u.u32 = t1_seconds;
+                sync_packet[1] = u.ui8[0];
+                sync_packet[2] = u.ui8[1];
+                sync_packet[3] = u.ui8[2];
+                sync_packet[4] = u.ui8[3];
 
-					u.u32 = t1_seconds;
-                	sync_packet[1] = u.ui8[0];
-                	sync_packet[2] = u.ui8[1];
-                	sync_packet[3] = u.ui8[2];
-                	sync_packet[4] = u.ui8[3];
+                u.u32 = t1_nanos;
+                sync_packet[5] = u.ui8[0];
+                sync_packet[6] = u.ui8[1];
+                sync_packet[7] = u.ui8[2];
+                sync_packet[8] = u.ui8[3];
 
-                	u.u32 = t1_nanos;
-                	sync_packet[5] = u.ui8[0];
-                	sync_packet[6] = u.ui8[1];
-                	sync_packet[7] = u.ui8[2];
-                	sync_packet[8] = u.ui8[3];
+                m_serial_driver->port()->send(sync_packet);
 
-                	m_serial_driver->port()->send(sync_packet);
-
-              //} // end each 4 seconds
           	} // end mid second interrupt
 
             // prev_device_rtc_tics is used for the mid-second interrupt
