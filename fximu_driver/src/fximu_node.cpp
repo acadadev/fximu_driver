@@ -24,6 +24,8 @@ using timestamp = std::pair<seconds, nanoseconds>;
 //        - std dev of corrected and raw delays are the same
 // TODO: no need to filter phi, but maybe outlier detection
 
+// TODO: limit rtc offset to maybe 64?
+
 // TODO: TEST: observe initial status logs after restart and cold restart to figure out stale data problems
 // TODO: offset filter must be regional i.e. taking the last n measurements.
 
@@ -98,15 +100,18 @@ namespace drivers
         return LNI::CallbackReturn::FAILURE;
       }
 
-      // must start receiving data before sending parameters
+
+
+      send_parameters();																// send device parameters
+      rclcpp::sleep_for(std::chrono::milliseconds(100));                                // 0.1 second pause
+      init_sync();																	    // send sync packet, block until beginning of second
+                                                                                        // init_sync also enables sending of imu packets
+
+
+      // TODO: this was before send parameters must start receiving data before sending parameters
       m_serial_driver->port()->async_receive(
         std::bind(&FximuNode::receive_callback, this, std::placeholders::_1, std::placeholders::_2)
       );
-
-      send_parameters();																// send device parameters
-      rclcpp::sleep_for(std::chrono::milliseconds(3000));                               // 3 second pause
-      init_sync();																	    // send sync packet, block until beginning of second
-                                                                                        // init_sync also enables sending of imu packets
 
       RCLCPP_INFO(get_logger(), "FXIMU lifecycle successfully configured");
 
@@ -337,11 +342,11 @@ namespace drivers
           sys_status = buffer[61];
 
           if(read_state == -1) {
-            RCLCPP_ERROR(this->get_logger(), "FXIMU init read_state = -1");
+            RCLCPP_INFO(this->get_logger(), "FXIMU init read_state = -1");
             prev_packet_seq = buffer[60];								  // record incoming packet sequence number as previous
             read_state = 0;                                               // set read state to normal
             handle_sys_status(sys_status, sys_code);                      // handle sys_status even in first packet
-            return;                                                       // return if first read
+			return;
           } else {
             packet_seq = buffer[60];								      // incoming packet sequence number
             uint8_t expected_seq = prev_packet_seq + 1;                   // calculate expected sequence number
@@ -446,7 +451,9 @@ namespace drivers
                 i32_to_ui8 i;
 
 				if(device_rtc_seconds % 64 == 62) {						     // at 62nd second
-					i.i32 = (int32_t) phi; 									 // sends last measured offset
+					if(filter_offset->isWarmedUp()) {						 // notice: even we are sending non filtered phi, we wait for filter warm up
+						i.i32 = (int32_t) phi; 								 // sends last measured offset
+					}
 				} else if(device_rtc_seconds % 64 == 63) {					 // skip sending packet at 63rd second
 					return;
 				} else {
