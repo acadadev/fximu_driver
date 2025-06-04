@@ -11,6 +11,41 @@ using lifecycle_msgs::msg::State;
 using namespace std::chrono;
 using timestamp = std::pair<seconds, nanoseconds>;
 
+// TODO: filter correction only after offset is correctly avged
+// TODO: ISSUES
+//       - observe delay consistent with rtt and offset
+//       - avg does not constitude offset.
+//       - test new error logging architecture
+
+// TODO: FEATURES (can only be implemented once system is stable)
+//        - implement packet timing correction based on offset
+//        - use of sensor clock
+//        - ENU or NED create option and study
+//        - AUDIT: is gravity removed, is there a boolean for it? is it removed wrong from the packet.
+// TODO: BUG
+// received this mid operation SYS_CODE (0x02): Initial calibration failed due non-steady state threshold
+// should only appear when initial calibration
+
+// TODO: what if nanos_diff is negative, how to apply offset to it.
+// TODO: 1ST writie printer for each packet delay.
+//       - it should have device rtc time
+//       - host time
+//       - delta. as well as last trim applied.
+//       - for each packet
+//       - we have two problems a. rtt b. negatives
+
+// TODO: only correct time when filter_offset has converged
+// TODO: need a different more recent filter for offset. or not even a filter. the recent
+//        - we increment delay with offset
+//        - if offset  is negative, we decrement  from it
+//        - but what if the delay is negative?
+//        - std dev of corrected and raw delays are the same
+
+// TODO: TEST: observe initial status logs after restart and cold restart to figure out stale data problems
+// TODO: offset filter must be regional i.e. taking the last n measurements.
+// TODO: sync sending can be orchestrated to skip rtc adj seconds, like 63 to 64
+// TODO: no need to filter phi, but maybe outlier detection
+
 namespace drivers
 {
   namespace fximu_driver
@@ -167,12 +202,12 @@ namespace drivers
 
           		// Bit 7: eeprom init error
           		if ((current_sys_status >> 7) & 1) { // Check if bit 7 is set
-            		RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 7 (0x80): EEPROM Initialization Error");
+            		RCLCPP_WARN(this->get_logger(), "SYS_STATUS Bit 7 (0x80): EEPROM Initialization Error");
           		}
 
           		// Bit 6: hard restart required
           		if ((current_sys_status >> 6) & 1) { // Check if bit 6 is set
-            		RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 6 (0x40): Hard Restart Required");
+            		RCLCPP_WARN(this->get_logger(), "SYS_STATUS Bit 6 (0x40): Hard Restart Required");
             		// send reset if bit6 is set, usb connection will crash, so lifecycle node has to respawn
             		param_packet.assign(USB_PACKET_SIZE, 0);
             		param_packet[0] = PARAMETER_PREFIX;
@@ -188,7 +223,7 @@ namespace drivers
 
           		// Bit 5: soft restart required
           		if ((current_sys_status >> 5) & 1) { // Check if bit 5 is set
-            		RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 5 (0x20): Sensor Restart Required");
+            		RCLCPP_WARN(this->get_logger(), "SYS_STATUS Bit 5 (0x20): Sensor Restart Required");
             		// send soft reset if bit5 is set
             		param_packet.assign(USB_PACKET_SIZE, 0);
             		param_packet[0] = PARAMETER_PREFIX;
@@ -203,39 +238,51 @@ namespace drivers
 
           		// Bit 4: eeprom write error
          		 if ((current_sys_status >> 4) & 1) { // Check if bit 4 is set
-            		 RCLCPP_INFO(this->get_logger(), "SYS_STATUS Bit 4 (0x10): EEPROM Write Error");
+            		 RCLCPP_WARN(this->get_logger(), "SYS_STATUS Bit 4 (0x10): EEPROM Write Error");
          		 }
 
-        		  // First 4 bits indicate meaning of sys_code
-		  		uint8_t code_indicator = current_sys_status & 0x0F;
-		  		if(code_indicator == 0x01) {
+          		// Bit 3: magneto init error
+         		 if ((current_sys_status >> 3) & 1) { // Check if bit 3 is set
+            		 RCLCPP_WARN(this->get_logger(), "SYS_STATUS Bit 3 (0x08): Magnetometer Init Error");
+         		 }
+
+        		 // First 3 bits indicate meaning of sys_code
+		  		 uint8_t code_indicator = current_sys_status & 0x07;
+
+		  		 if(code_indicator == 0x01) {
+
             		switch(sys_code) {
 						case 0x01:
-							RCLCPP_INFO(this->get_logger(), "SYS_CODE (0x01): Sensor Restart Complete");
+							RCLCPP_WARN(this->get_logger(), "SYS_CODE (0x01): Sensor Restart Complete");
 							break;
 						case 0x02:
-							RCLCPP_INFO(this->get_logger(), "SYS_CODE (0x02): Initial calibration failed due non-steady state threshold");
+							RCLCPP_WARN(this->get_logger(), "SYS_CODE (0x02): Initial calibration failed due non-steady state threshold");
 							break;
 						case 0x03:
-							RCLCPP_INFO(this->get_logger(), "SYS_CODE (0x03): Initial calibration failed due to non-steady state");
+							RCLCPP_WARN(this->get_logger(), "SYS_CODE (0x03): Initial calibration failed due to non-steady state");
 							break;
 						case 0x04:
-							RCLCPP_INFO(this->get_logger(), "SYS_CODE (0x04): UI Filter Configuration Error");
+							RCLCPP_WARN(this->get_logger(), "SYS_CODE (0x04): UI Filter Configuration Error");
 							break;
 						case 0x05:
-							RCLCPP_INFO(this->get_logger(), "SYS_CODE (0x05): RTC Trim applied");
+							RCLCPP_WARN(this->get_logger(), "SYS_CODE (0x05): RTC Trim applied");
 							break;
 						case 0x06:
-							RCLCPP_INFO(this->get_logger(), "SYS_CODE (0x06): Magnetometer overflow");
+							RCLCPP_WARN(this->get_logger(), "SYS_CODE (0x06): Magnetometer overflow");
 							break;
 						case 0x07:
-							RCLCPP_INFO(this->get_logger(), "SYS_CODE (0x07): RTC SUB adjusted to zero");
+							RCLCPP_WARN(this->get_logger(), "SYS_CODE (0x07): RTC SUB adjusted to zero");
+							break;
+						case 0x08:
+							RCLCPP_WARN(this->get_logger(), "SYS_CODE (0x08): USB_Handler :timing_ok = false");
 							break;
 						default:
+							RCLCPP_WARN(this->get_logger(), "SYS_CODE (0x%X): Undefined", sys_code);
 							break;
 					}
-		  		} else if(code_indicator == 0x02) {
-					RCLCPP_INFO(this->get_logger(), "FIFO_HEADER: %d", sys_code);
+
+		  		 } else if(code_indicator == 0x02) {
+					RCLCPP_WARN(this->get_logger(), "FIFO_HEADER: %d", sys_code);
 		  		}
         }
         return false;
@@ -303,7 +350,7 @@ namespace drivers
           sys_status = buffer[61];
 
           if(read_state == -1) {
-            RCLCPP_INFO(this->get_logger(), "FXIMU init read_state = -1");
+            RCLCPP_ERROR(this->get_logger(), "FXIMU init read_state = -1");
             prev_packet_seq = buffer[60];								  // record incoming packet sequence number as previous
             read_state = 0;                                               // set read state to normal
             handle_sys_status(sys_status, sys_code);                      // handle sys_status even in first packet
@@ -354,15 +401,6 @@ namespace drivers
           const auto device_point = device_timestamp.first + device_timestamp.second;
           const int32_t nanos_diff = (received_point - device_point).count();
 
-		  // TODO: what if nanos_diff is negative, how to apply offset to it.
-          // TODO: 1ST writie printer for each packet delay.
-          //       - it should have device rtc time
-          //       - host time
-          //       - delta. as well as last trim applied.
-          //       - for each packet
-          //
-	      //       - we have two problems a. rtt b. negatives
-
 		  if(abs(nanos_diff) > 900000000) {
 
 		  		RCLCPP_ERROR(this->get_logger(), "threshold nanos_diff %d rtc %d.%d host %d.%d",
@@ -374,14 +412,13 @@ namespace drivers
 
 				prev_device_rtc_ticks = 16384;				// this delays the sync cycle until next time
 
-				// TODO: rename timestate, or consider adding a state machine
 		    	// if nanos_diff exceed threshold for 3 times in a row reset the driver
-				if(time_state >= 3) { this->reset_driver();}
-				time_state = time_state + 1;
+				if(threshold_count >= 3) { this->reset_driver();}
+				threshold_count = threshold_count + 1;
 
 		  } else {
 
-			time_state = 0;
+			threshold_count = 0;
 
           	// stamp for imu packet
           	// rclcpp::Time stamp = rclcpp::Clock().now();
@@ -408,16 +445,8 @@ namespace drivers
 			// nanos_diff is received_time - device_rtc_time
 			// filter_offset is rtc offset, + for device rtc leading
             // (received_point - device_point).count();
-            // so it is (a - b) already. we need to substract it from b.
-            // so we add it.
-            // but what about negatives? when the situation is (a - b) + -5
-            //filter_delay->update((int32_t) (nanos_diff + ((int32_t) filter_offset->getAverage())));
+            // so it is (a - b) already. we need to substract it from offset, so we add to nanos_diff
 			filter_delay->update((int32_t) (nanos_diff + phi));
-
-			// TODO: TEST: observe initial status logs after restart and cold restart
-			//             to figure out stale data problems
-
-			// TODO: offset filter must be regional i.e. taking the last n measurements.
 
           	// here we send sync request packet. this triggers mid second
           	if((prev_device_rtc_ticks < 16384) && (device_rtc_ticks >= 16384)) {
@@ -427,9 +456,6 @@ namespace drivers
                 	u32_to_ui8 u;                                          // sync request procedure starts here
                 	i32_to_ui8 i;
 
-					// TODO: sync sending can be orchestrated to skip rtc adj seconds, like 63 to 64
-
-					// TODO: no need to filter phi, but maybe outlier detection.
                     //       also t3 t2 has to be errorful
                     //       t3 and t2 can not be errorful since they are done at middle of second
                     ///      packet rejection is a must based on time diff with prev packet
@@ -438,7 +464,6 @@ namespace drivers
 					if(filter_offset->isWarmedUp()) {
 						// TODOi.i32 = (int32_t) filter_offset->getAverage();        // sends the filtered offset
 						i.i32 = (int32_t) phi; 									     // sends last measured offset
-
 					} else {
 						i.i32 = 0;											// sends the filtered offset
 					}
@@ -473,21 +498,6 @@ namespace drivers
             prev_device_rtc_ticks = device_rtc_ticks;
 
 		  } // end threshold check
-
-	      // TODO: filter correction only after offset is correctly avged
-          // TODO: ISSUES
-          //       - observe delay consistent with rtt and offset
-          //       - avg does not constitude offset.
-          //       - test new error logging architecture
-
-          // TODO: FEATURES (can only be implemented once system is stable)
-		  //        - implement packet timing correction based on offset
-	      //        - use of sensor clock
-          //        - ENU or NED create option and study
-          //        - AUDIT: is gravity removed, is there a boolean for it? is it removed wrong from the packet.
-          // TODO: BUG
-          // received this mid operation SYS_CODE (0x02): Initial calibration failed due non-steady state threshold
-		  // should only appear when initial calibration
 
         }
 
@@ -539,7 +549,10 @@ namespace drivers
            // when timing_ok=false in device, t3 is zero
 		   if(t3_seconds == 0 && t3_nanos == 0) {
 				// skip
-		   } else {
+				RCLCPP_ERROR(this->get_logger(), "Skipping calculation due to zero T3");
+		   } else if(t2_seconds == 0 && t2_nanos == 0) {
+				RCLCPP_ERROR(this->get_logger(), "Skipping calculation due to zero T2");
+		  } else {
 
 	   			const timestamp t1 {std::chrono::seconds(t1_seconds), std::chrono::nanoseconds(t1_nanos)};
        	   		const timestamp t2 {std::chrono::seconds{t2_seconds}, std::chrono::nanoseconds{t2_nanos}};
@@ -562,30 +575,14 @@ namespace drivers
            		filter_rtt->update(sigma);
            		filter_offset->update(phi);
 
-				// TODO: Testing
-				// notice this was done after sending sync packet
-
 				double delay_avg = filter_delay->getAverage(); 		// notice: purposefully done line this, not to trigger statistics reset
 				double delay_raw = filter_delay_raw->getAverage(); 	// notice: purposefully done line this
 
-				// TODO: need a different more recent filter for offset. or not even a filter. the recent
-
-				// TODO: thought
-                //        - we increment delay with offset
-                //        - if offset  is negative, we decrement  from it
-                //        - but what if the delay is negative?
-				//        - std dev of corrected and raw delays are the same
-
 				RCLCPP_INFO(this->get_logger(), "avg %f raw_avg %f std_dev %f std_dev_raw %f", delay_avg, delay_raw, filter_delay->getStdDev(), filter_delay_raw->getStdDev());
-
-				// TODO: maybe we need to change the find of filter.
-				// TODO: put clause in offset correction, only to do so when filter is warmed.
-                //       in other words we should only correct time when filter_offset has converged.
 
 			    RCLCPP_INFO(this->get_logger(), "t1 %ld t2 %ld t3 %ld t4 %ld t41 %ld t32 %ld",
 					t1_point.count(), t2_point.count(), t3_point.count(), t4_point.count(),
 					t41, t32);
-
 
            		RCLCPP_INFO(this->get_logger(), "rtt %f offset %f trim %d", filter_rtt->getAverage(), filter_offset->getAverage(), applied_rtc_trim);
 		   }

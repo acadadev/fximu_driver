@@ -92,7 +92,7 @@ namespace drivers
         void init_sync();
 
         int8_t read_state = -1;               // serial read state
-        uint8_t time_state = 0;				  // flag to check anomaly in timestamps
+        uint8_t threshold_count = 0;				  // incremented each consequitive time where the nanos_diff has exceeded threshod
 
         uint8_t sys_code = 0;                 // system code for debug purposes
         uint8_t sys_status = 0;               // current system status
