@@ -27,8 +27,6 @@ using timestamp = std::pair<seconds, nanoseconds>;
 // TODO: TEST: observe initial status logs after restart and cold restart to figure out stale data problems
 // TODO: offset filter must be regional i.e. taking the last n measurements.
 
-
-
 namespace drivers
 {
   namespace fximu_driver
@@ -245,7 +243,7 @@ namespace drivers
 							RCLCPP_WARN(this->get_logger(), "SYS_CODE (0x03): Initial calibration failed due to non-steady state");
 							break;
 						case 0x04:
-							RCLCPP_WARN(this->get_logger(), "SYS_CODE (0x04): UI Filter Configuration Error");
+							RCLCPP_WARN(this->get_logger(), "SYS_CODE (0x04): Sensor UI Filter Parameter Error");
 							break;
 						case 0x05:
 							RCLCPP_WARN(this->get_logger(), "SYS_CODE (0x05): RTC Trim applied");
@@ -257,8 +255,14 @@ namespace drivers
 							RCLCPP_WARN(this->get_logger(), "SYS_CODE (0x07): RTC SUB adjusted to zero");
 							break;
 						case 0x08:
-							RCLCPP_WARN(this->get_logger(), "SYS_CODE (0x08): USB_Handler :timing_ok = false");
+							RCLCPP_WARN(this->get_logger(), "SYS_CODE (0x08): USB_Handler : timing_ok = false");
 							break;
+						case 0x09:
+							RCLCPP_WARN(this->get_logger(), "SYS_CODE (0x09): Sensor Parameter error");
+						case 0x0A:
+							RCLCPP_WARN(this->get_logger(), "SYS_CODE (0x0A): Sensor ID Self Test Failed");
+						case 0x0B:
+							RCLCPP_WARN(this->get_logger(), "SYS_CODE (0x0B)");
 						default:
 							RCLCPP_WARN(this->get_logger(), "SYS_CODE (0x%X): Undefined", sys_code);
 							break;
