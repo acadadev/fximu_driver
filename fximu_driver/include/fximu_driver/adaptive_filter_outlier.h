@@ -17,7 +17,7 @@ private:
     double last_raw_value = 0.0;     // last raw input value
 
 public:
-    AdaptiveFilter(double initial_avg = 0.0,
+    AdaptiveFilterOutlier(double initial_avg = 0.0,
                   double initial_alpha = 0.25,
                   double final_alpha = 0.0625,
                   uint32_t warmup_samples = 16,
@@ -29,6 +29,7 @@ public:
         outlier_threshold(outlier_threshold) { }
 
     bool update(int32_t value) {
+
         last_raw_value = value;
         sample_count++;
 
@@ -68,7 +69,5 @@ public:
     bool isWarmedUp() const { return warmed_up; }
     double getLastRawValue() const { return last_raw_value; }
 };
-
-#endif //ADAPTIVE_FILTER_H
 
 #endif

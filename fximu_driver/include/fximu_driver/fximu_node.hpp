@@ -12,6 +12,7 @@
 #include "fximu_driver/fximu_driver.hpp"
 #include "fximu_driver/adaptive_filter.h"
 #include "fximu_driver/adaptive_filter_period.h"
+#include "fximu_driver/adaptive_filter_outlier.h"
 
 #include <memory>
 #include <string>
@@ -118,7 +119,7 @@ namespace drivers
         std::vector<uint8_t> imu_packet;      // imu packet 64 bytes
 
         AdaptiveFilter* filter_rtt;
-        AdaptiveFilter* filter_offset;
+        AdaptiveFilterOutlier* filter_offset;
 		AdaptiveFilterPeriod* filter_delay;
         AdaptiveFilterPeriod* filter_delay_raw;
 

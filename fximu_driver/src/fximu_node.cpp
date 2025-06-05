@@ -37,31 +37,31 @@ namespace drivers
     FximuNode::FximuNode(const rclcpp::NodeOptions & options)
     : lc::LifecycleNode("fximu_node", options), m_owned_ctx{new IoContext(2)}, m_serial_driver{new FximuDriver(*m_owned_ctx)}
     {
-      get_serial_parameters();                                        // get serial parameters for connection
-      declare_parameters();                                           // get device parameters with default from yaml file
-	  filter_rtt = new AdaptiveFilter(0.0, 0.25, 0.01, 128);          // ntp round trip time filter
-      filter_offset = new AdaptiveFilter(0.0, 0.25, 0.0625, 16);      // ntp offset time filter
-      filter_delay = new AdaptiveFilterPeriod();                      // packet delay time filter
-	  filter_delay_raw = new AdaptiveFilterPeriod();                  // packet raw delay time filter
-      init_packet.assign(6, 0);                  // initial sync packet
-      sync_packet.assign(64, 0);                 // ntp sync packet
-      param_packet.assign(64, 0);                // parameter packet
-      imu_packet.assign(64, 0);                  // imu_packet
+      get_serial_parameters();                                        			// get serial parameters for connection
+      declare_parameters();                                           			// get device parameters with default from yaml file
+	  filter_rtt = new AdaptiveFilter(0.0, 0.25, 0.01, 128);          			// ntp round trip time filter
+      filter_offset = new AdaptiveFilterOutlier(0.0, 0.25, 0.0625, 16, 4.0);	// ntp offset time filter
+      filter_delay = new AdaptiveFilterPeriod();                      			// packet delay time filter
+	  filter_delay_raw = new AdaptiveFilterPeriod();                  			// packet raw delay time filter
+      init_packet.assign(6, 0);                  								// initial sync packet
+      sync_packet.assign(64, 0);                 								// ntp sync packet
+      param_packet.assign(64, 0);                								// parameter packet
+      imu_packet.assign(64, 0);                  								// imu_packet
     }
 
     FximuNode::FximuNode(const rclcpp::NodeOptions & options, const IoContext & ctx)
     : lc::LifecycleNode("fximu_node", options), m_serial_driver{new FximuDriver(ctx)}
     {
-      get_serial_parameters();                   // get serial parameters for connection
-      declare_parameters();                      // get device parameters with default from yaml file
-	  filter_rtt = new AdaptiveFilter(0.0, 0.25, 0.01, 128);          // ntp round trip time filter
-      filter_offset = new AdaptiveFilter(0.0, 0.25, 0.0625, 16);      // ntp offset time filter
-      filter_delay = new AdaptiveFilterPeriod();                      // packet delay time filter
-	  filter_delay_raw = new AdaptiveFilterPeriod();                  // packet raw delay time filter
-      init_packet.assign(6, 0);                  // initial sync packet
-      sync_packet.assign(64, 0);                 // ntp sync packet
-      param_packet.assign(64, 0);                // parameter packet
-      imu_packet.assign(64, 0);                  // imu_packet
+      get_serial_parameters();                                        			// get serial parameters for connection
+      declare_parameters();                                           			// get device parameters with default from yaml file
+	  filter_rtt = new AdaptiveFilter(0.0, 0.25, 0.01, 128);          			// ntp round trip time filter
+      filter_offset = new AdaptiveFilterOutlier(0.0, 0.25, 0.0625, 16, 4.0);	// ntp offset time filter
+      filter_delay = new AdaptiveFilterPeriod();                      			// packet delay time filter
+	  filter_delay_raw = new AdaptiveFilterPeriod();                  			// packet raw delay time filter
+      init_packet.assign(6, 0);                  								// initial sync packet
+      sync_packet.assign(64, 0);                 								// ntp sync packet
+      param_packet.assign(64, 0);                								// parameter packet
+      imu_packet.assign(64, 0);                  								// imu_packet
     }
 
     FximuNode::~FximuNode() {
@@ -107,8 +107,7 @@ namespace drivers
       init_sync();																	    // send sync packet, block until beginning of second
                                                                                         // init_sync also enables sending of imu packets
 
-
-      // TODO: this was before send parameters must start receiving data before sending parameters
+      // start receiving packets
       m_serial_driver->port()->async_receive(
         std::bind(&FximuNode::receive_callback, this, std::placeholders::_1, std::placeholders::_2)
       );
@@ -452,7 +451,8 @@ namespace drivers
 
 				if(device_rtc_seconds % 64 == 62) {						     // at 62nd second
 					if(filter_offset->isWarmedUp()) {						 // notice: even we are sending non filtered phi, we wait for filter warm up
-						i.i32 = (int32_t) phi; 								 // sends last measured offset
+						// i.i32 = (int32_t) phi; 							 // sends last measured offset
+						i.i32 = filter_offset->getAverage(); // TODO:
 					}
 				} else if(device_rtc_seconds % 64 == 63) {					 // skip sending packet at 63rd second
 					return;
