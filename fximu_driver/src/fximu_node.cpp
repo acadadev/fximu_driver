@@ -40,7 +40,7 @@ namespace drivers
       get_serial_parameters();                                        			// get serial parameters for connection
       declare_parameters();                                           			// get device parameters with default from yaml file
 	  filter_rtt = new AdaptiveFilter(0.0, 0.25, 0.01, 128);          			// ntp round trip time filter
-      filter_offset = new AdaptiveFilterOutlier(0.0, 0.25, 0.0625, 16, 4.0);	// ntp offset time filter
+      filter_offset = new AdaptiveFilterOutlier(0.0, 0.25, 0.025, 32, 4.0);		// ntp offset time filter
       filter_delay = new AdaptiveFilterPeriod();                      			// packet delay time filter
 	  filter_delay_raw = new AdaptiveFilterPeriod();                  			// packet raw delay time filter
       init_packet.assign(6, 0);                  								// initial sync packet
@@ -55,7 +55,7 @@ namespace drivers
       get_serial_parameters();                                        			// get serial parameters for connection
       declare_parameters();                                           			// get device parameters with default from yaml file
 	  filter_rtt = new AdaptiveFilter(0.0, 0.25, 0.01, 128);          			// ntp round trip time filter
-      filter_offset = new AdaptiveFilterOutlier(0.0, 0.25, 0.0625, 16, 4.0);	// ntp offset time filter
+      filter_offset = new AdaptiveFilterOutlier(0.0, 0.25, 0.025, 32, 4.0);		// ntp offset time filter
       filter_delay = new AdaptiveFilterPeriod();                      			// packet delay time filter
 	  filter_delay_raw = new AdaptiveFilterPeriod();                  			// packet raw delay time filter
       init_packet.assign(6, 0);                  								// initial sync packet
@@ -452,13 +452,17 @@ namespace drivers
 				if(device_rtc_seconds % 64 == 62) {						     // at 62nd second
 					if(filter_offset->isWarmedUp()) {						 // notice: even we are sending non filtered phi, we wait for filter warm up
 						// i.i32 = (int32_t) phi; 							 // sends last measured offset
-						i.i32 = filter_offset->getAverage(); // TODO:
+						i.i32 = filter_offset->getAverage(); // TODO: more soften,
+														     // TODO: outlier rejection
+															 // TODO: works in a period and resets
 					}
 				} else if(device_rtc_seconds % 64 == 63) {					 // skip sending packet at 63rd second
 					return;
 				} else {
 					i.i32 = 0;
 				}
+
+				// TODO: could add outlier detection to T41.
 
                 sync_packet[9] = i.ui8[0];							   // precalculated offset to gain time
                 sync_packet[10] = i.ui8[1];
@@ -565,7 +569,16 @@ namespace drivers
 				const auto t32 = (t3_point - t2_point).count();
 
            		filter_rtt->update(sigma);
-           		filter_offset->update(phi);
+           		bool outlier_rejected = filter_offset->update(phi);
+
+				// TODO: delay corrected, is spiky. it should not be spiky. that means we filter wrong.
+				// TODO: soften the filter.
+				// TODO: filter should reset like other std dev ones.
+				// TODO: revise
+				// TODO: what happens if rejected. it will not add to filter, but next time could be wrong.
+				if(outlier_rejected) {
+					RCLCPP_INFO(this->get_logger(), "phi: %d", phi);
+				}
 
 				double delay_avg = filter_delay->getAverage(); 		// notice: purposefully done line this, not to trigger statistics reset
 				double delay_raw = filter_delay_raw->getAverage(); 	// notice: purposefully done line this
