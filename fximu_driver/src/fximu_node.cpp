@@ -569,15 +569,15 @@ namespace drivers
 				const auto t32 = (t3_point - t2_point).count();
 
            		filter_rtt->update(sigma);
-           		bool outlier_rejected = filter_offset->update(phi);
+           		bool outlier_accepted = filter_offset->update(phi);
 
 				// TODO: delay corrected, is spiky. it should not be spiky. that means we filter wrong.
 				// TODO: soften the filter.
 				// TODO: filter should reset like other std dev ones.
 				// TODO: revise
 				// TODO: what happens if rejected. it will not add to filter, but next time could be wrong.
-				if(outlier_rejected) {
-					RCLCPP_INFO(this->get_logger(), "phi: %d", phi);
+				if(!outlier_accepted) {
+					RCLCPP_INFO(this->get_logger(), "rejected phi: %d", phi);
 				}
 
 				double delay_avg = filter_delay->getAverage(); 		// notice: purposefully done line this, not to trigger statistics reset
