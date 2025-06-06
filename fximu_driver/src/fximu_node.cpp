@@ -29,6 +29,12 @@ using timestamp = std::pair<seconds, nanoseconds>;
 // TODO: TEST: observe initial status logs after restart and cold restart to figure out stale data problems
 // TODO: offset filter must be regional i.e. taking the last n measurements.
 
+// TODO: the reason of spikes is certainly, t41 flickering on rpi5. i dont know what, but it might cause an
+// TODO: instant uprise in the adaptive filter value
+
+// TODO: outlier detection could be dangerous, report it.
+// TODO: plot offset unfiltered.
+
 namespace drivers
 {
   namespace fximu_driver
@@ -419,6 +425,10 @@ namespace drivers
             //  + rclcpp::Duration(0, device_rtc_nanos);
           	//rclcpp::Time stamp1 = rclcpp::Time(device_rtc_seconds, device_rtc_nanos);
 
+
+			// TODO: delay corrected is spiky on rpi5. although rtt and offset are not.
+			// TODO: here is where we make correction to timestamp based on offset.
+
           	rclcpp::Time stamp(static_cast<uint64_t>((device_rtc_seconds * 1e9) + device_rtc_nanos));
           	imu_data.header.stamp = stamp;
           	imu_data.header.frame_id = imu_frame_id;
@@ -440,10 +450,20 @@ namespace drivers
 			// filter_offset is rtc offset, + for device rtc leading
             // (received_point - device_point).count();
             // so it is (a - b) already. we need to substract it from offset, so we add to nanos_diff
-			filter_delay->update((int32_t) (nanos_diff + phi));
+			filter_delay->update((int32_t) (nanos_diff + filter_offset->getAverage()));
+
+			// TODO: TRY using average phi here or even see if phi is outlier or not.
+			//       if we are not updating filter with phi
+			//       then we are not updating this above
+			//       - how ever it still is not the cause of spikes on delay corrected
+            //       - or it could be possible that this delay corrected filter is working kind of wrong.
+			//       - because it definitively is there, this is probably happening because of the reset each time
+			//       - it gets.
 
           	// here we send sync request packet. this triggers mid second
           	if((prev_device_rtc_ticks < 16384) && (device_rtc_ticks >= 16384)) {
+
+				// SYNC REQUEST START
 
 				// sync request procedure starts here
                 u32_to_ui8 u;
@@ -487,6 +507,8 @@ namespace drivers
                 sync_packet[8] = u.ui8[3];
 
                 m_serial_driver->port()->send(sync_packet);
+
+				// SYNC REQUEST END
 
           	} // end mid second interrupt
 
@@ -562,34 +584,41 @@ namespace drivers
 
 		   		// δ = (T4 - T1) - (T3 - T2)
            		// θ = [(T2 - T1) + (T3 - T4)] / 2
-           		sigma = (t4_point - t1_point).count() - (t3_point - t2_point).count();
-	       		phi = ((t2_point - t1_point).count() + (t3_point - t4_point).count()) / 2;
+           		instant_rtt = (t4_point - t1_point).count() - (t3_point - t2_point).count();
+	       		instant_offset = ((t2_point - t1_point).count() + (t3_point - t4_point).count()) / 2;
 
 				const auto t41 = (t4_point - t1_point).count();
 				const auto t32 = (t3_point - t2_point).count();
 
-           		filter_rtt->update(sigma);
-           		bool outlier_accepted = filter_offset->update(phi);
+           		filter_rtt->update(instant_rtt);
+           		bool offset_accepted = filter_offset->update(instant_offset);
+
+				// TODO: if phi is outlier, then use prev_phi, (which might be in the filter)
 
 				// TODO: delay corrected, is spiky. it should not be spiky. that means we filter wrong.
 				// TODO: soften the filter.
 				// TODO: filter should reset like other std dev ones.
 				// TODO: revise
 				// TODO: what happens if rejected. it will not add to filter, but next time could be wrong.
-				if(!outlier_accepted) {
-					RCLCPP_INFO(this->get_logger(), "rejected phi: %d", phi);
-				}
+
+				// TODO: except rtc trim, all info printed is local, i.e after sync reply received.
 
 				double delay_avg = filter_delay->getAverage(); 		// notice: purposefully done line this, not to trigger statistics reset
 				double delay_raw = filter_delay_raw->getAverage(); 	// notice: purposefully done line this
 
-				RCLCPP_INFO(this->get_logger(), "avg %f raw_avg %f std_dev %f std_dev_raw %f", delay_avg, delay_raw, filter_delay->getStdDev(), filter_delay_raw->getStdDev());
+				// SYNC REPLY REPORT START
+
+				RCLCPP_INFO(this->get_logger(), "instant_rtt %d instant_offset %d accepted %d", instant_rtt, instant_offset, static_cast<int>(offset_accepted));
+           		RCLCPP_INFO(this->get_logger(), "avg_rtt %f avg_offset %f trim %d", filter_rtt->getAverage(), filter_offset->getAverage(), applied_rtc_trim);
 
 			    RCLCPP_INFO(this->get_logger(), "t1 %ld t2 %ld t3 %ld t4 %ld t41 %ld t32 %ld",
 					t1_point.count(), t2_point.count(), t3_point.count(), t4_point.count(),
 					t41, t32);
 
-           		RCLCPP_INFO(this->get_logger(), "rtt %f offset %f trim %d", filter_rtt->getAverage(), filter_offset->getAverage(), applied_rtc_trim);
+				// filtered average delay values and standard deviations
+				RCLCPP_INFO(this->get_logger(), "avg_delay %f avg_raw %f std_dev_delay %f std_dev_raw %f", delay_avg, delay_raw, filter_delay->getStdDev(), filter_delay_raw->getStdDev());
+
+				// SYNC REPLY REPORT END
 		   }
 
            /*

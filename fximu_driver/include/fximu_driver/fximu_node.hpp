@@ -107,8 +107,8 @@ namespace drivers
         uint32_t t1_seconds = 0;		      // t1 seconds
         uint32_t t1_nanos = 0;		  	      // t1 nanos
 
-        int32_t sigma = 0;
-        int32_t phi = 0;
+        int32_t instant_rtt = 0;
+        int32_t instant_offset = 0;
 
         bool enable_magneto = false;          // enable magnetometer
         bool publish_magneto = false;         // publish magnetometer data
