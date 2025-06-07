@@ -92,7 +92,8 @@ namespace drivers
         bool handle_sys_status(uint8_t current_status, uint8_t sys_code);
         void init_sync();
 
-        int8_t read_state = -1;               // serial read state
+		uint8_t sync_state = 0;				  // sync state
+        int8_t read_state = -1;               // serial read state // TODO: rename
         uint8_t threshold_count = 0;				  // incremented each consequitive time where the nanos_diff has exceeded threshod
 
         uint8_t sys_code = 0;                 // system code for debug purposes

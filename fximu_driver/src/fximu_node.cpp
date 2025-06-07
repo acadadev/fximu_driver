@@ -320,8 +320,11 @@ namespace drivers
         (buffer[0] == DATA_PREFIX) &                                  			    // prefix check
         (buffer[USB_PACKET_SIZE - 1] == PACKET_POSTFIX)                   			// postfix check
       ) {
+
         const auto received_marker = get_time();									// get packet received time
         const auto since_epoch = received_marker.time_since_epoch();				// single epoch calculation with direct uint32_t conversion
+
+	    sync_state = 0;
 
         const uint32_t received_marker_sec = static_cast<uint32_t>(					// received second
             std::chrono::duration_cast<std::chrono::seconds>(since_epoch).count()
@@ -460,6 +463,12 @@ namespace drivers
 			//       - because it definitively is there, this is probably happening because of the reset each time
 			//       - it gets.
 
+			// TODO: slim chance that correcting with instant offset instead of average is better
+			// TODO: also notice in delay corrected, we are correcting by average_offset
+            // TODO: when offset is small, maybe it is better to correct it with average offset, but
+            // when offset is big, one better corect it with instant offset as seen
+			// also offset filter is too soft.
+
           	// here we send sync request packet. this triggers mid second
           	if((prev_device_rtc_ticks < 16384) && (device_rtc_ticks >= 16384)) {
 
@@ -508,6 +517,8 @@ namespace drivers
 
                 m_serial_driver->port()->send(sync_packet);
 
+				sync_state = 1; // TODO: enum SYNC_REQUEST_SEMT
+
 				// SYNC REQUEST END
 
           	} // end mid second interrupt
@@ -519,6 +530,7 @@ namespace drivers
 
         }
 
+	  // TODO: rename DIAG_PREVIX and DIAG_*
       } else if(
         (bytes_transferred == 64) &
         (buffer[0] == DIAG_PREFIX) &                                				// prefix check
@@ -542,6 +554,16 @@ namespace drivers
         if(crc8 != c_crc8) {
           RCLCPP_ERROR(this->get_logger(), "DIAG CRC8:%d not equal c_CRC8:%d", crc8, c_crc8);
         } else {
+
+		   if(sync_state == 0) {
+				RCLCPP_ERROR(this->get_logger(), "zero sync state");
+		   }
+
+		   if(sync_state == 1) {
+			// TODO:
+				sync_state = 0;
+		   }
+
 
            /*
            float ax_bias = R4(buffer, 1);                           // ax_bias
@@ -570,7 +592,7 @@ namespace drivers
 				RCLCPP_ERROR(this->get_logger(), "Skipping calculation due to zero T3");
 		   } else if(t2_seconds == 0 && t2_nanos == 0) {
 				RCLCPP_ERROR(this->get_logger(), "Skipping calculation due to zero T2");
-		  } else {
+		   } else {
 
 	   			const timestamp t1 {std::chrono::seconds(t1_seconds), std::chrono::nanoseconds(t1_nanos)};
        	   		const timestamp t2 {std::chrono::seconds{t2_seconds}, std::chrono::nanoseconds{t2_nanos}};
@@ -592,6 +614,12 @@ namespace drivers
 
            		filter_rtt->update(instant_rtt);
            		bool offset_accepted = filter_offset->update(instant_offset);
+
+				// TODO: we can filter t41, and not use if std dev is high. *2
+				// TODO: is it when an imu packet is slipped before sync reply is made?
+                // TODO: consider the scenario: packet received -> sync_request -> packet_received -> sync_reply.
+				// TODO: maybe we can check in the client, that the last state was sync request.
+				// TODO: make a state machine around that
 
 				// TODO: if phi is outlier, then use prev_phi, (which might be in the filter)
 
