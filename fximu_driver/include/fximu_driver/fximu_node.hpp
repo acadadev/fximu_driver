@@ -91,6 +91,7 @@ namespace drivers
         void send_parameters();
         bool handle_sys_status(uint8_t current_status, uint8_t sys_code);
         void init_sync();
+		void send_sync_request();
 
 		uint8_t sync_state = 0;				  // sync state
         int8_t read_state = -1;               // serial read state // TODO: rename
@@ -123,6 +124,8 @@ namespace drivers
         AdaptiveFilterOutlier* filter_offset;
 		AdaptiveFilterPeriod* filter_delay;
         AdaptiveFilterPeriod* filter_delay_raw;
+
+        rclcpp::TimerBase::SharedPtr timer_sync;
 
     };
   }

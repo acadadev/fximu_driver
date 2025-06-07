@@ -53,6 +53,7 @@ namespace drivers
       sync_packet.assign(64, 0);                 								// ntp sync packet
       param_packet.assign(64, 0);                								// parameter packet
       imu_packet.assign(64, 0);                  								// imu_packet
+	  // TODO: move these to configure maybe? so not double type
     }
 
     FximuNode::FximuNode(const rclcpp::NodeOptions & options, const IoContext & ctx)
@@ -118,6 +119,20 @@ namespace drivers
         std::bind(&FximuNode::receive_callback, this, std::placeholders::_1, std::placeholders::_2)
       );
 
+// TODO: PLOT T2 - T1 and T3−T4
+
+      timer_sync = this->create_wall_timer(
+        std::chrono::milliseconds(2000),
+        [&]() {
+			// TODO: dont forget 62 sync, 63 dont sent, and maybe 64 dont send too, 64 means 0.
+            // const auto time = std::chrono::high_resolution_clock::now();
+            // const uint32_t timer_seconds = std::chrono::duration_cast<std::chrono::seconds>(time.time_since_epoch()).count();
+            send_sync_request();
+        }, 0);
+      timer_sync->reset();
+
+
+
       RCLCPP_INFO(get_logger(), "FXIMU lifecycle successfully configured");
 
       return LNI::CallbackReturn::SUCCESS;
@@ -126,6 +141,7 @@ namespace drivers
     LNI::CallbackReturn FximuNode::on_activate(const lc::State & state) {
       (void)state;
       imu_publisher->on_activate();
+      timer_sync->reset();
       if(enable_magneto && publish_magneto) {
         mag_publisher->on_activate();
       }
@@ -136,6 +152,7 @@ namespace drivers
     LNI::CallbackReturn FximuNode::on_deactivate(const lc::State & state) {
       (void)state;
       imu_publisher->on_deactivate();
+	  timer_sync->cancel();
       if(enable_magneto && publish_magneto) {
         mag_publisher->on_deactivate();
       }
@@ -147,6 +164,7 @@ namespace drivers
       (void)state;
       m_serial_driver->port()->close();
       imu_publisher.reset();
+      timer_sync->cancel();
       if(enable_magneto && publish_magneto) {
         mag_publisher.reset();
       }
@@ -285,6 +303,56 @@ namespace drivers
         return false;
     }
 
+	void FximuNode::send_sync_request()
+	{
+        u32_to_ui8 u;
+        i32_to_ui8 i;
+
+		/*
+		if(device_rtc_seconds % 64 == 62) {						     // at 62nd second
+			if(filter_offset->isWarmedUp()) {						 // notice: even we are sending non filtered phi, we wait for filter warm up
+				// i.i32 = (int32_t) phi; 							 // sends last measured offset
+				i.i32 = filter_offset->getAverage(); // TODO: more soften,
+													 // TODO: outlier rejection
+													 // TODO: works in a period and resets
+			}
+		} else if(device_rtc_seconds % 64 == 63) {					 // skip sending packet at 63rd second
+			return;
+		} else {
+			i.i32 = 0;
+		}*/
+
+		i.i32 = 0;
+
+        sync_packet[9] = i.ui8[0];							   // precalculated offset to gain time
+        sync_packet[10] = i.ui8[1];
+        sync_packet[11] = i.ui8[2];
+        sync_packet[12] = i.ui8[3];
+
+        auto t1_time = get_time();  					   	   // time marker
+        t1_time += std::chrono::microseconds(0);               // add a propagation delay
+        t1_seconds = std::chrono::duration_cast<std::chrono::seconds>(t1_time.time_since_epoch()).count();
+        t1_nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(t1_time.time_since_epoch() - std::chrono::seconds(t1_seconds)).count();
+
+		u.u32 = t1_seconds;
+        sync_packet[1] = u.ui8[0];
+        sync_packet[2] = u.ui8[1];
+        sync_packet[3] = u.ui8[2];
+        sync_packet[4] = u.ui8[3];
+
+        u.u32 = t1_nanos;
+        sync_packet[5] = u.ui8[0];
+        sync_packet[6] = u.ui8[1];
+        sync_packet[7] = u.ui8[2];
+        sync_packet[8] = u.ui8[3];
+
+        m_serial_driver->port()->send(sync_packet);
+
+		sync_state = 1;
+
+		// SYNC REQUEST END
+	}
+
     void FximuNode::init_sync()
     {
 
@@ -315,7 +383,137 @@ namespace drivers
     void FximuNode::receive_callback(const std::vector<uint8_t> & buffer, const size_t & bytes_transferred)
     {
 
-      if (
+if(
+        (bytes_transferred == 64) &
+        (buffer[0] == DIAG_PREFIX) &                                				// prefix check
+        (buffer[USB_PACKET_SIZE - 1] == PACKET_POSTFIX)               				// postfix check
+	  ) {
+
+        const auto t4_mark = get_time();											// get packet received time
+        const auto since_epoch = t4_mark.time_since_epoch();						// single epoch calculation with direct uint32_t conversion
+
+        const uint32_t t4_mark_seconds = static_cast<uint32_t>(					    // received second
+            std::chrono::duration_cast<std::chrono::seconds>(since_epoch).count()
+        );
+        const uint32_t t4_mark_nanos = static_cast<uint32_t>(						// received nanoseconds with guaranteed range [0, 999,999,999]
+            (since_epoch % std::chrono::seconds(1)).count()
+        );
+
+        // get crc from received packet
+        uint8_t crc8 = buffer[USB_PACKET_SIZE - 2];                   // crc @ 62
+        uint8_t c_crc8 = crc8ccitt(buffer.data(), USB_PACKET_SIZE - 3);
+
+        if(crc8 != c_crc8) {
+          RCLCPP_ERROR(this->get_logger(), "DIAG CRC8:%d not equal c_CRC8:%d", crc8, c_crc8);
+        } else {
+
+		   if(sync_state == 0) {
+				RCLCPP_ERROR(this->get_logger(), "zero sync state");
+		   }
+
+		   if(sync_state == 1) {
+			// TODO:
+				sync_state = 0;
+				RCLCPP_ERROR(this->get_logger(), "correct sync state");
+		   }
+
+		   // TODO: first thing to do is without imu packet.
+
+
+           /*
+           float ax_bias = R4(buffer, 1);                           // ax_bias
+           float ay_bias = R4(buffer, 5);                           // ay_bias
+           float az_bias = R4(buffer, 9);                           // az_bias
+
+           float wx_bias = R4(buffer, 13);                          // wx_bias
+           float wy_bias = R4(buffer, 17);                          // wy_bias
+           float wz_bias = R4(buffer, 21);                          // wz_bias
+
+           float mag_temp = R4(buffer, 45);
+		   float sensor_temp = R4(buffer, 49);
+           */
+
+		   uint32_t t2_seconds = U4(buffer, 25);		// T2 seconds
+		   uint32_t t2_nanos = U4(buffer, 29);			// T2 nanos
+
+		   uint32_t t3_seconds = U4(buffer, 33);		// T3 seconds
+		   uint32_t t3_nanos = U4(buffer, 37);			// T3 nanos
+
+           int16_t applied_rtc_trim = I2(buffer, 41);
+
+           // when timing_ok=false in device, t3 is zero
+		   if(t3_seconds == 0 && t3_nanos == 0) {
+				// skip
+				RCLCPP_ERROR(this->get_logger(), "Skipping calculation due to zero T3");
+		   } else if(t2_seconds == 0 && t2_nanos == 0) {
+				RCLCPP_ERROR(this->get_logger(), "Skipping calculation due to zero T2");
+		   } else {
+
+	   			const timestamp t1 {std::chrono::seconds(t1_seconds), std::chrono::nanoseconds(t1_nanos)};
+       	   		const timestamp t2 {std::chrono::seconds{t2_seconds}, std::chrono::nanoseconds{t2_nanos}};
+	   			const timestamp t3 {std::chrono::seconds{t3_seconds}, std::chrono::nanoseconds{t3_nanos}};
+       			const timestamp t4 {std::chrono::seconds{t4_mark_seconds}, std::chrono::nanoseconds{t4_mark_nanos}};
+
+           		const auto t1_point = t1.first + t1.second;
+           		const auto t2_point = t2.first + t2.second;
+           		const auto t3_point = t3.first + t3.second;
+           		const auto t4_point = t4.first + t4.second;
+
+		   		// δ = (T4 - T1) - (T3 - T2)
+           		// θ = [(T2 - T1) + (T3 - T4)] / 2
+           		instant_rtt = (t4_point - t1_point).count() - (t3_point - t2_point).count();
+	       		instant_offset = ((t2_point - t1_point).count() + (t3_point - t4_point).count()) / 2;
+
+				const auto t41 = (t4_point - t1_point).count();
+				const auto t32 = (t3_point - t2_point).count();
+
+				const auto t21 = (t2_point - t1_point).count();
+				const auto t34 = (t3_point - t4_point).count();
+
+           		filter_rtt->update(instant_rtt);
+           		bool offset_accepted = filter_offset->update(instant_offset);
+
+				// TODO: we can filter t41, and not use if std dev is high. *2
+				// TODO: is it when an imu packet is slipped before sync reply is made?
+                // TODO: consider the scenario: packet received -> sync_request -> packet_received -> sync_reply.
+				// TODO: maybe we can check in the client, that the last state was sync request.
+				// TODO: make a state machine around that
+
+				// TODO: if phi is outlier, then use prev_phi, (which might be in the filter)
+
+				// TODO: delay corrected, is spiky. it should not be spiky. that means we filter wrong.
+				// TODO: soften the filter.
+				// TODO: filter should reset like other std dev ones.
+				// TODO: revise
+				// TODO: what happens if rejected. it will not add to filter, but next time could be wrong.
+
+				// TODO: except rtc trim, all info printed is local, i.e after sync reply received.
+
+				double delay_avg = filter_delay->getAverage(); 		// notice: purposefully done line this, not to trigger statistics reset
+				double delay_raw = filter_delay_raw->getAverage(); 	// notice: purposefully done line this
+
+				// SYNC REPLY REPORT START
+
+				RCLCPP_INFO(this->get_logger(), "instant_rtt %d instant_offset %d accepted %d", instant_rtt, instant_offset, static_cast<int>(offset_accepted));
+           		RCLCPP_INFO(this->get_logger(), "avg_rtt %f avg_offset %f trim %d", filter_rtt->getAverage(), filter_offset->getAverage(), applied_rtc_trim);
+
+			    RCLCPP_INFO(this->get_logger(), "t1 %ld t2 %ld t3 %ld t4 %ld t41 %ld t32 %ld t21 %ld t34 %ld",
+					t1_point.count(), t2_point.count(), t3_point.count(), t4_point.count(),
+					t41, t32, t21, t34);
+
+				// filtered average delay values and standard deviations
+				RCLCPP_INFO(this->get_logger(), "avg_delay %f avg_raw %f std_dev_delay %f std_dev_raw %f", delay_avg, delay_raw, filter_delay->getStdDev(), filter_delay_raw->getStdDev());
+
+				// SYNC REPLY REPORT END
+		   }
+
+           /*
+           RCLCPP_INFO(this->get_logger(), "ax: %.4f, ay: %.4f, az: %.4f, wx: %.4f, wy: %.4f, wz: %.4f, mt: %.1fC, st: %.1fC",
+                                            ax_bias, ay_bias, az_bias, wx_bias, wy_bias, wz_bias, mag_temp, sensor_temp);
+           */
+
+	     } // TODO: fix indent
+      } else if (
         (bytes_transferred == 64) &													// packet size check
         (buffer[0] == DATA_PREFIX) &                                  			    // prefix check
         (buffer[USB_PACKET_SIZE - 1] == PACKET_POSTFIX)                   			// postfix check
@@ -324,7 +522,7 @@ namespace drivers
         const auto received_marker = get_time();									// get packet received time
         const auto since_epoch = received_marker.time_since_epoch();				// single epoch calculation with direct uint32_t conversion
 
-	    sync_state = 0;
+		sync_state = 0;
 
         const uint32_t received_marker_sec = static_cast<uint32_t>(					// received second
             std::chrono::duration_cast<std::chrono::seconds>(since_epoch).count()
@@ -472,6 +670,7 @@ namespace drivers
           	// here we send sync request packet. this triggers mid second
           	if((prev_device_rtc_ticks < 16384) && (device_rtc_ticks >= 16384)) {
 
+				/*
 				// SYNC REQUEST START
 
 				// sync request procedure starts here
@@ -521,6 +720,8 @@ namespace drivers
 
 				// SYNC REQUEST END
 
+*/
+
           	} // end mid second interrupt
 
             // prev_device_rtc_tics is used for the mid-second interrupt
@@ -531,130 +732,6 @@ namespace drivers
         }
 
 	  // TODO: rename DIAG_PREVIX and DIAG_*
-      } else if(
-        (bytes_transferred == 64) &
-        (buffer[0] == DIAG_PREFIX) &                                				// prefix check
-        (buffer[USB_PACKET_SIZE - 1] == PACKET_POSTFIX)               				// postfix check
-	  ) {
-
-        const auto t4_mark = get_time();											// get packet received time
-        const auto since_epoch = t4_mark.time_since_epoch();						// single epoch calculation with direct uint32_t conversion
-
-        const uint32_t t4_mark_seconds = static_cast<uint32_t>(					    // received second
-            std::chrono::duration_cast<std::chrono::seconds>(since_epoch).count()
-        );
-        const uint32_t t4_mark_nanos = static_cast<uint32_t>(						// received nanoseconds with guaranteed range [0, 999,999,999]
-            (since_epoch % std::chrono::seconds(1)).count()
-        );
-
-        // get crc from received packet
-        uint8_t crc8 = buffer[USB_PACKET_SIZE - 2];                   // crc @ 62
-        uint8_t c_crc8 = crc8ccitt(buffer.data(), USB_PACKET_SIZE - 3);
-
-        if(crc8 != c_crc8) {
-          RCLCPP_ERROR(this->get_logger(), "DIAG CRC8:%d not equal c_CRC8:%d", crc8, c_crc8);
-        } else {
-
-		   if(sync_state == 0) {
-				RCLCPP_ERROR(this->get_logger(), "zero sync state");
-		   }
-
-		   if(sync_state == 1) {
-			// TODO:
-				sync_state = 0;
-		   }
-
-
-           /*
-           float ax_bias = R4(buffer, 1);                           // ax_bias
-           float ay_bias = R4(buffer, 5);                           // ay_bias
-           float az_bias = R4(buffer, 9);                           // az_bias
-
-           float wx_bias = R4(buffer, 13);                          // wx_bias
-           float wy_bias = R4(buffer, 17);                          // wy_bias
-           float wz_bias = R4(buffer, 21);                          // wz_bias
-
-           float mag_temp = R4(buffer, 45);
-		   float sensor_temp = R4(buffer, 49);
-           */
-
-		   uint32_t t2_seconds = U4(buffer, 25);		// T2 seconds
-		   uint32_t t2_nanos = U4(buffer, 29);			// T2 nanos
-
-		   uint32_t t3_seconds = U4(buffer, 33);		// T3 seconds
-		   uint32_t t3_nanos = U4(buffer, 37);			// T3 nanos
-
-           int16_t applied_rtc_trim = I2(buffer, 41);
-
-           // when timing_ok=false in device, t3 is zero
-		   if(t3_seconds == 0 && t3_nanos == 0) {
-				// skip
-				RCLCPP_ERROR(this->get_logger(), "Skipping calculation due to zero T3");
-		   } else if(t2_seconds == 0 && t2_nanos == 0) {
-				RCLCPP_ERROR(this->get_logger(), "Skipping calculation due to zero T2");
-		   } else {
-
-	   			const timestamp t1 {std::chrono::seconds(t1_seconds), std::chrono::nanoseconds(t1_nanos)};
-       	   		const timestamp t2 {std::chrono::seconds{t2_seconds}, std::chrono::nanoseconds{t2_nanos}};
-	   			const timestamp t3 {std::chrono::seconds{t3_seconds}, std::chrono::nanoseconds{t3_nanos}};
-       			const timestamp t4 {std::chrono::seconds{t4_mark_seconds}, std::chrono::nanoseconds{t4_mark_nanos}};
-
-           		const auto t1_point = t1.first + t1.second;
-           		const auto t2_point = t2.first + t2.second;
-           		const auto t3_point = t3.first + t3.second;
-           		const auto t4_point = t4.first + t4.second;
-
-		   		// δ = (T4 - T1) - (T3 - T2)
-           		// θ = [(T2 - T1) + (T3 - T4)] / 2
-           		instant_rtt = (t4_point - t1_point).count() - (t3_point - t2_point).count();
-	       		instant_offset = ((t2_point - t1_point).count() + (t3_point - t4_point).count()) / 2;
-
-				const auto t41 = (t4_point - t1_point).count();
-				const auto t32 = (t3_point - t2_point).count();
-
-           		filter_rtt->update(instant_rtt);
-           		bool offset_accepted = filter_offset->update(instant_offset);
-
-				// TODO: we can filter t41, and not use if std dev is high. *2
-				// TODO: is it when an imu packet is slipped before sync reply is made?
-                // TODO: consider the scenario: packet received -> sync_request -> packet_received -> sync_reply.
-				// TODO: maybe we can check in the client, that the last state was sync request.
-				// TODO: make a state machine around that
-
-				// TODO: if phi is outlier, then use prev_phi, (which might be in the filter)
-
-				// TODO: delay corrected, is spiky. it should not be spiky. that means we filter wrong.
-				// TODO: soften the filter.
-				// TODO: filter should reset like other std dev ones.
-				// TODO: revise
-				// TODO: what happens if rejected. it will not add to filter, but next time could be wrong.
-
-				// TODO: except rtc trim, all info printed is local, i.e after sync reply received.
-
-				double delay_avg = filter_delay->getAverage(); 		// notice: purposefully done line this, not to trigger statistics reset
-				double delay_raw = filter_delay_raw->getAverage(); 	// notice: purposefully done line this
-
-				// SYNC REPLY REPORT START
-
-				RCLCPP_INFO(this->get_logger(), "instant_rtt %d instant_offset %d accepted %d", instant_rtt, instant_offset, static_cast<int>(offset_accepted));
-           		RCLCPP_INFO(this->get_logger(), "avg_rtt %f avg_offset %f trim %d", filter_rtt->getAverage(), filter_offset->getAverage(), applied_rtc_trim);
-
-			    RCLCPP_INFO(this->get_logger(), "t1 %ld t2 %ld t3 %ld t4 %ld t41 %ld t32 %ld",
-					t1_point.count(), t2_point.count(), t3_point.count(), t4_point.count(),
-					t41, t32);
-
-				// filtered average delay values and standard deviations
-				RCLCPP_INFO(this->get_logger(), "avg_delay %f avg_raw %f std_dev_delay %f std_dev_raw %f", delay_avg, delay_raw, filter_delay->getStdDev(), filter_delay_raw->getStdDev());
-
-				// SYNC REPLY REPORT END
-		   }
-
-           /*
-           RCLCPP_INFO(this->get_logger(), "ax: %.4f, ay: %.4f, az: %.4f, wx: %.4f, wy: %.4f, wz: %.4f, mt: %.1fC, st: %.1fC",
-                                            ax_bias, ay_bias, az_bias, wx_bias, wy_bias, wz_bias, mag_temp, sensor_temp);
-           */
-
-	     }
       }
 	} // end receive_callback
 
