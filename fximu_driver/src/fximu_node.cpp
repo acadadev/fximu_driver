@@ -444,8 +444,8 @@ namespace drivers
     void FximuNode::receive_callback(const std::vector<uint8_t> & buffer, const size_t & bytes_transferred)
     {
 
-	  const auto cb_mark = get_time();												// get packet received time
-	  // const auto cb_mark = m_serial_driver->port()->get_P4();
+	  // const auto cb_mark = get_time();												// get packet received time
+	  const auto cb_mark = m_serial_driver->port()->get_P4();
 
 	  if(
         (bytes_transferred == 64) &
