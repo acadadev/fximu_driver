@@ -45,7 +45,7 @@ namespace drivers
   {
 
     FximuNode::FximuNode(const rclcpp::NodeOptions & options) // TODO: was 2
-    : lc::LifecycleNode("fximu_node", options), m_owned_ctx{new IoContext(1)}, m_serial_driver{new FximuDriver(*m_owned_ctx)}
+    : lc::LifecycleNode("fximu_node", options), m_owned_ctx{new IoContext(2)}, m_serial_driver{new FximuDriver(*m_owned_ctx)}
     {
       get_serial_parameters();                                        			// get serial parameters for connection
       declare_parameters();                                           			// get device parameters with default from yaml file
@@ -149,6 +149,8 @@ namespace drivers
             const uint32_t host_seconds = std::chrono::duration_cast<std::chrono::seconds>(time.time_since_epoch()).count();
             send_sync_request(host_seconds);
         }, 0);
+
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
       timer_sync->reset();
 
 
@@ -350,7 +352,7 @@ namespace drivers
         sync_packet[12] = i.ui8[3];
 
         auto t1_time = get_time();  					   	   // time marker
-        t1_time += std::chrono::microseconds(0);               // add a propagation delay
+        t1_time += std::chrono::microseconds(0);               // add a propagation delay // TODO: use this. but could baffle ntp
         t1_seconds = std::chrono::duration_cast<std::chrono::seconds>(t1_time.time_since_epoch()).count();
         t1_nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(t1_time.time_since_epoch() - std::chrono::seconds(t1_seconds)).count();
 
