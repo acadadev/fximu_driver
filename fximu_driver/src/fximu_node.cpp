@@ -35,13 +35,17 @@ using timestamp = std::pair<seconds, nanoseconds>;
 // TODO: outlier detection could be dangerous, report it.
 // TODO: plot offset unfiltered.
 
+// TODO: mess with asio. could it be sync_receive
+
+// TODO: iocontext was 2, and hardware control protocol is changed
+
 namespace drivers
 {
   namespace fximu_driver
   {
 
-    FximuNode::FximuNode(const rclcpp::NodeOptions & options)
-    : lc::LifecycleNode("fximu_node", options), m_owned_ctx{new IoContext(2)}, m_serial_driver{new FximuDriver(*m_owned_ctx)}
+    FximuNode::FximuNode(const rclcpp::NodeOptions & options) // TODO: was 2
+    : lc::LifecycleNode("fximu_node", options), m_owned_ctx{new IoContext(1)}, m_serial_driver{new FximuDriver(*m_owned_ctx)}
     {
       get_serial_parameters();                                        			// get serial parameters for connection
       declare_parameters();                                           			// get device parameters with default from yaml file
@@ -117,17 +121,36 @@ namespace drivers
       // start receiving packets
       m_serial_driver->port()->async_receive(
         std::bind(&FximuNode::receive_callback, this, std::placeholders::_1, std::placeholders::_2)
-      );
+      ); // TODO: remember.
 
-// TODO: PLOT T2 - T1 and T3−T4
 
       timer_sync = this->create_wall_timer(
-        std::chrono::milliseconds(2000),
+        std::chrono::milliseconds(1000),
         [&]() {
-			// TODO: dont forget 62 sync, 63 dont sent, and maybe 64 dont send too, 64 means 0.
-            // const auto time = std::chrono::high_resolution_clock::now();
-            // const uint32_t timer_seconds = std::chrono::duration_cast<std::chrono::seconds>(time.time_since_epoch()).count();
-            send_sync_request();
+            const auto time = std::chrono::high_resolution_clock::now();
+            const uint32_t host_seconds = std::chrono::duration_cast<std::chrono::seconds>(time.time_since_epoch()).count();
+            send_sync_request(host_seconds);
+
+/*
+    std::vector<uint8_t> reply(64);
+    asio::error_code ec;
+    size_t bytes_read = asio::read(
+        *m_serial_driver->port(),
+        asio::buffer(reply),
+        asio::transfer_exactly(64),
+        ec
+    );
+
+    // (4) Handle reply
+    if (!ec && bytes_read == 64) {
+        const auto t4 = get_time();  // Timestamp immediately after read completes
+        process_sync_reply(reply, t4);
+    } else {
+        RCLCPP_ERROR("Sync reply timeout/corrupt");
+    }
+*/
+
+
         }, 0);
       timer_sync->reset();
 
@@ -303,26 +326,26 @@ namespace drivers
         return false;
     }
 
-	void FximuNode::send_sync_request()
+	void FximuNode::send_sync_request(uint32_t host_seconds)
 	{
         u32_to_ui8 u;
         i32_to_ui8 i;
 
-		/*
-		if(device_rtc_seconds % 64 == 62) {						     // at 62nd second
+		if(host_seconds % 64 == 62) {						     // at 62nd second
 			if(filter_offset->isWarmedUp()) {						 // notice: even we are sending non filtered phi, we wait for filter warm up
 				// i.i32 = (int32_t) phi; 							 // sends last measured offset
 				i.i32 = filter_offset->getAverage(); // TODO: more soften,
 													 // TODO: outlier rejection
 													 // TODO: works in a period and resets
+				RCLCPP_WARN(this->get_logger(), "sync_request: %d %f", host_seconds, filter_offset->getAverage());
 			}
-		} else if(device_rtc_seconds % 64 == 63) {					 // skip sending packet at 63rd second
+		} else if(host_seconds % 64 == 63) {					 // skip sending packet at 63rd second
+			return;
+		} else if(host_seconds % 64 == 0) {					 	 // skip sending packet at 64-0 second
 			return;
 		} else {
 			i.i32 = 0;
-		}*/
-
-		i.i32 = 0;
+		}
 
         sync_packet[9] = i.ui8[0];							   // precalculated offset to gain time
         sync_packet[10] = i.ui8[1];
@@ -383,14 +406,17 @@ namespace drivers
     void FximuNode::receive_callback(const std::vector<uint8_t> & buffer, const size_t & bytes_transferred)
     {
 
-if(
+	  const auto cb_mark = get_time();												// get packet received time
+	  // const auto cb_mark = m_serial_driver->port()->get_P4();
+
+	  if(
         (bytes_transferred == 64) &
         (buffer[0] == DIAG_PREFIX) &                                				// prefix check
         (buffer[USB_PACKET_SIZE - 1] == PACKET_POSTFIX)               				// postfix check
 	  ) {
 
-        const auto t4_mark = get_time();											// get packet received time
-        const auto since_epoch = t4_mark.time_since_epoch();						// single epoch calculation with direct uint32_t conversion
+        // const auto t4_mark = get_time();											// get packet received time
+        const auto since_epoch = cb_mark.time_since_epoch();						// single epoch calculation with direct uint32_t conversion
 
         const uint32_t t4_mark_seconds = static_cast<uint32_t>(					    // received second
             std::chrono::duration_cast<std::chrono::seconds>(since_epoch).count()
@@ -412,13 +438,10 @@ if(
 		   }
 
 		   if(sync_state == 1) {
-			// TODO:
 				sync_state = 0;
-				RCLCPP_ERROR(this->get_logger(), "correct sync state");
 		   }
 
 		   // TODO: first thing to do is without imu packet.
-
 
            /*
            float ax_bias = R4(buffer, 1);                           // ax_bias
@@ -502,7 +525,7 @@ if(
 					t41, t32, t21, t34);
 
 				// filtered average delay values and standard deviations
-				RCLCPP_INFO(this->get_logger(), "avg_delay %f avg_raw %f std_dev_delay %f std_dev_raw %f", delay_avg, delay_raw, filter_delay->getStdDev(), filter_delay_raw->getStdDev());
+				// RCLCPP_INFO(this->get_logger(), "avg_delay %f avg_raw %f std_dev_delay %f std_dev_raw %f", delay_avg, delay_raw, filter_delay->getStdDev(), filter_delay_raw->getStdDev());
 
 				// SYNC REPLY REPORT END
 		   }
@@ -519,8 +542,8 @@ if(
         (buffer[USB_PACKET_SIZE - 1] == PACKET_POSTFIX)                   			// postfix check
       ) {
 
-        const auto received_marker = get_time();									// get packet received time
-        const auto since_epoch = received_marker.time_since_epoch();				// single epoch calculation with direct uint32_t conversion
+        // const auto received_marker = get_time();									// get packet received time
+        const auto since_epoch = cb_mark.time_since_epoch();						// single epoch calculation with direct uint32_t conversion
 
 		sync_state = 0;
 
@@ -738,7 +761,7 @@ if(
     void FximuNode::get_serial_parameters() {
 
       uint32_t baud_rate{};
-      auto fc = FlowControl::NONE;
+      auto fc = FlowControl::HARDWARE; // TODO: was none
       auto pt = Parity::NONE;
       auto sb = StopBits::ONE;
 
@@ -805,6 +828,8 @@ if(
       }
       m_device_config = std::make_unique<SerialPortConfig>(baud_rate, fc, pt, sb);
     } // end get serial parameters
+
+	// TODO: make offset filter follow instant offset
 
     void FximuNode::declare_parameters() {
 

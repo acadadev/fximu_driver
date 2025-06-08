@@ -91,9 +91,9 @@ namespace drivers
         void send_parameters();
         bool handle_sys_status(uint8_t current_status, uint8_t sys_code);
         void init_sync();
-		void send_sync_request();
+		    void send_sync_request(uint32_t host_seconds);
 
-		uint8_t sync_state = 0;				  // sync state
+		    uint8_t sync_state = 0;				        // sync state // TODO: write what it is composed off
         int8_t read_state = -1;               // serial read state // TODO: rename
         uint8_t threshold_count = 0;				  // incremented each consequitive time where the nanos_diff has exceeded threshod
 
@@ -115,14 +115,14 @@ namespace drivers
         bool enable_magneto = false;          // enable magnetometer
         bool publish_magneto = false;         // publish magnetometer data
 
-		std::vector<uint8_t> init_packet;     // init packet 6 bytes
+		    std::vector<uint8_t> init_packet;     // init packet 6 bytes
         std::vector<uint8_t> sync_packet;     // sync packet 64 bytes
         std::vector<uint8_t> param_packet;    // parameter packet 64 bytes
         std::vector<uint8_t> imu_packet;      // imu packet 64 bytes
 
         AdaptiveFilter* filter_rtt;
         AdaptiveFilterOutlier* filter_offset;
-		AdaptiveFilterPeriod* filter_delay;
+		    AdaptiveFilterPeriod* filter_delay;
         AdaptiveFilterPeriod* filter_delay_raw;
 
         rclcpp::TimerBase::SharedPtr timer_sync;

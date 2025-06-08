@@ -6,6 +6,9 @@
 #include <array>
 #include <utility>
 
+#include <ctime>
+#include <chrono>
+
 #include "io_context/common.hpp"
 #include "io_context/io_context.hpp"
 
@@ -129,6 +132,7 @@ namespace drivers
       void async_send(const std::vector<uint8_t> & buff);
       void async_receive(Functor func);
       bool send_break();
+	  std::chrono::time_point<std::chrono::high_resolution_clock> get_P4();
 
     private:
 
@@ -140,6 +144,8 @@ namespace drivers
       asio::serial_port m_serial_port;
       SerialPortConfig m_port_config;
       Functor m_func;
+
+	  std::chrono::time_point<std::chrono::high_resolution_clock> P4;
       
       static constexpr size_t m_recv_buffer_size{2048};
       std::vector<uint8_t> m_recv_buffer;
