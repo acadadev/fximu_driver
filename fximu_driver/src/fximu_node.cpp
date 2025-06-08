@@ -379,6 +379,43 @@ namespace drivers
     void FximuNode::init_sync()
     {
 
+        auto pre_send_offset = std::chrono::nanoseconds(500000);
+
+        uint32_t host_seconds;
+
+        while (true) {
+            auto current_time = get_time();
+            auto duration_since_epoch = current_time.time_since_epoch();
+            host_seconds = std::chrono::duration_cast<std::chrono::seconds>(duration_since_epoch).count();
+            auto time_into_current_second = duration_since_epoch - std::chrono::seconds(host_seconds);
+            auto time_to_next_second = std::chrono::seconds(1) - time_into_current_second;
+            if(time_to_next_second < pre_send_offset) {
+
+            RCLCPP_ERROR(this->get_logger(),
+                   "Breaking loop. Current time (seconds): %u, (nanoseconds into second): %ld", host_seconds, time_into_current_second);
+
+              break; // We found our target time, exit the loop
+            }
+        }
+
+        host_seconds++;
+
+        u32_to_ui8 u;
+        u.u32 = host_seconds;
+        init_packet[1] = u.ui8[0];
+        init_packet[2] = u.ui8[1];
+        init_packet[3] = u.ui8[2];
+        init_packet[4] = u.ui8[3];
+
+        m_serial_driver->port()->send(init_packet); // always send sync mode
+
+        // RCLCPP_INFO(this->get_logger(), "FXIMU SYNC: Packet sent approx 0.5ms before second %u", host_seconds);
+    }
+
+    /*
+    void FximuNode::init_sync_exact()
+    {
+
       auto sync_time = get_time();
       uint32_t host_seconds;
       uint32_t previous_nanos = 0;
@@ -402,6 +439,7 @@ namespace drivers
 
 	  RCLCPP_INFO(this->get_logger(), "FXIMU SYNC seconds %u", host_seconds);
     }
+    */
 
     void FximuNode::receive_callback(const std::vector<uint8_t> & buffer, const size_t & bytes_transferred)
     {
