@@ -392,7 +392,7 @@ namespace drivers
             if(time_to_next_second < pre_send_offset) {
 
             RCLCPP_ERROR(this->get_logger(),
-                   "Breaking loop. Current time (seconds): %u, (nanoseconds into second): %ld", host_seconds, time_into_current_second);
+                   "Breaking loop. Current time (seconds): %u, (nanoseconds into second): %lu", host_seconds, time_into_current_second);
 
               break; // We found our target time, exit the loop
             }
@@ -445,7 +445,7 @@ namespace drivers
     {
 
 	  // const auto cb_mark = get_time();												// get packet received time
-	  const auto cb_mark = m_serial_driver->port()->get_P4();
+	  std::chrono::time_point<std::chrono::high_resolution_clock> cb_mark = m_serial_driver->port()->get_P4();
 
 	  if(
         (bytes_transferred == 64) &
@@ -462,6 +462,8 @@ namespace drivers
         const uint32_t t4_mark_nanos = static_cast<uint32_t>(						// received nanoseconds with guaranteed range [0, 999,999,999]
             (since_epoch % std::chrono::seconds(1)).count()
         );
+
+        RCLCPP_ERROR(this->get_logger(), "T4: %u %u", t4_mark_seconds, t4_mark_nanos);
 
         // get crc from received packet
         uint8_t crc8 = buffer[USB_PACKET_SIZE - 2];                   // crc @ 62

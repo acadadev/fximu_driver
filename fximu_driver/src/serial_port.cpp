@@ -82,6 +82,7 @@ namespace drivers
           asio::buffer(m_recv_buffer),
           [this](std::error_code error, size_t bytes_transferred)
           {
+            P4 = std::chrono::high_resolution_clock::now(); // ALSO set timestamp here!
             async_receive_handler(error, bytes_transferred); // TODO: make parameter instead of using global P4
           });
       }
