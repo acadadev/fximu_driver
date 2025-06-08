@@ -124,13 +124,6 @@ namespace drivers
       ); // TODO: remember.
 
 
-      timer_sync = this->create_wall_timer(
-        std::chrono::milliseconds(1000),
-        [&]() {
-            const auto time = std::chrono::high_resolution_clock::now();
-            const uint32_t host_seconds = std::chrono::duration_cast<std::chrono::seconds>(time.time_since_epoch()).count();
-            send_sync_request(host_seconds);
-
 /*
     std::vector<uint8_t> reply(64);
     asio::error_code ec;
@@ -149,8 +142,12 @@ namespace drivers
         RCLCPP_ERROR("Sync reply timeout/corrupt");
     }
 */
-
-
+      timer_sync = this->create_wall_timer(
+        std::chrono::milliseconds(1000),
+        [&]() {
+            const auto time = std::chrono::high_resolution_clock::now();
+            const uint32_t host_seconds = std::chrono::duration_cast<std::chrono::seconds>(time.time_since_epoch()).count();
+            send_sync_request(host_seconds);
         }, 0);
       timer_sync->reset();
 
@@ -337,7 +334,7 @@ namespace drivers
 				i.i32 = filter_offset->getAverage(); // TODO: more soften,
 													 // TODO: outlier rejection
 													 // TODO: works in a period and resets
-				RCLCPP_WARN(this->get_logger(), "sync_request: %d %f", host_seconds, filter_offset->getAverage());
+				// RCLCPP_WARN(this->get_logger(), "sync_request: %d %f", host_seconds, filter_offset->getAverage());
 			}
 		} else if(host_seconds % 64 == 63) {					 // skip sending packet at 63rd second
 			return;
@@ -445,7 +442,7 @@ namespace drivers
     {
 
 	  // const auto cb_mark = get_time();												// get packet received time
-	  std::chrono::time_point<std::chrono::high_resolution_clock> cb_mark = m_serial_driver->port()->get_P4();
+	  std::chrono::time_point<std::chrono::steady_clock> cb_mark = m_serial_driver->port()->get_P4();
 
 	  if(
         (bytes_transferred == 64) &

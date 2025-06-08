@@ -46,7 +46,8 @@ namespace drivers
         asio::buffer(m_recv_buffer),
         [this](std::error_code error, size_t bytes_transferred)
         {
-          P4 = std::chrono::high_resolution_clock::now(); // TODO: replace with get_time global, but it is in fximu
+          //P4 = std::chrono::high_resolution_clock::now(); // TODO: replace with get_time global, but it is in fximu
+          P4 = std::chrono::steady_clock::now();
           async_receive_handler(error, bytes_transferred);
         });
     }
@@ -82,7 +83,8 @@ namespace drivers
           asio::buffer(m_recv_buffer),
           [this](std::error_code error, size_t bytes_transferred)
           {
-            P4 = std::chrono::high_resolution_clock::now(); // ALSO set timestamp here!
+            // P4 = std::chrono::high_resolution_clock::now(); // ALSO set timestamp here!
+            P4 = std::chrono::steady_clock::now();
             async_receive_handler(error, bytes_transferred); // TODO: make parameter instead of using global P4
           });
       }
@@ -116,7 +118,7 @@ namespace drivers
       return m_serial_port.is_open();
     }
 
-	std::chrono::time_point<std::chrono::high_resolution_clock> SerialPort::get_P4() {
+	std::chrono::time_point<std::chrono::steady_clock> SerialPort::get_P4() {
 		return P4;
 	}
 

@@ -34,7 +34,8 @@
 namespace lc = rclcpp_lifecycle;
 using LNI = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface;
 
-#define USE_HIGH_PRECISION_CLOCK 1
+//#define USE_HIGH_PRECISION_CLOCK 1
+#define USE_MONOTONIC_CLOCK 1
 
 using sensor_msgs::msg::Imu;
 using sensor_msgs::msg::MagneticField;
